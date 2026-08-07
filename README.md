@@ -1,7 +1,7 @@
 # DitDash
 
-A Windows desktop Morse code trainer. Python 3 + tkinter for the UI and the built-in `winsound` module for
-tones — **Windows only**.
+A Windows desktop Morse code trainer. Python 3 + tkinter for the UI and the
+built-in `winsound` module for tones — **Windows only**.
 
 ## Features
 
