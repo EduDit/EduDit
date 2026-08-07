@@ -39,7 +39,22 @@ library.
 build_exe.bat
 ```
 
-This creates `dist\DitDash.exe` via PyInstaller.
+This creates `dist\DitDash.exe` via PyInstaller — the tkinter desktop app,
+fully self-contained (no Python needed on the target machine).
+
+There's also a web version (see `web/`) for running in a browser instead.
+`run_web.vbs` / `run_web.bat` launch it locally but need Python installed
+on that machine. For a device without Python, build a standalone launcher
+instead:
+
+```bat
+build_web_exe.bat
+```
+
+This creates `dist\DitDashWeb.exe`, which bundles the web app and a Python
+runtime together — copy just that one file to another Windows PC and
+double-click it; no Python install needed there. It serves the app at
+`http://localhost:8000` and opens it in the default browser.
 
 ## Data & layout
 
