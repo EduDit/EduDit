@@ -13,7 +13,7 @@ call ".venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
 python -m pip install pyinstaller
 
-pyinstaller --onefile --windowed --name DitDash main.py
+pyinstaller --onefile --windowed --name DitDash --icon assets\icon.ico main.py
 
 echo.
 echo Done. Executable is at dist\DitDash.exe
