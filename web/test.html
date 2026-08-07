@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DitDash — Tests</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  #app { max-width: 640px; }
+  ul.results { list-style: none; padding: 0; margin: 16px 0; }
+  ul.results li { padding: 8px 10px; border-radius: 6px; margin-bottom: 4px; background: var(--panel); }
+  ul.results li.fail { outline: 1px solid var(--bad); }
+  .err { display: block; margin-top: 4px; font-family: Consolas, monospace; font-size: 12px; }
+  #summary { font-size: 18px; font-weight: bold; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <p class="title">DitDash — Tests</p>
+  <p id="summary" class="muted">Running…</p>
+  <ul class="results" id="results"></ul>
+</div>
+<script type="module">
+  import { results } from "./js/testkit.js";
+  import "./js/learning.test.js";
+  import "./js/codes.test.js";
+  import "./js/lessons.test.js";
+  import "./js/customLessonEditor.test.js";
+
+  const list = document.getElementById("results");
+  for (const r of results) {
+    const li = document.createElement("li");
+    li.className = r.pass ? "good" : "bad fail";
+    li.textContent = `${r.pass ? "PASS" : "FAIL"} — ${r.name}`;
+    if (!r.pass) {
+      const err = document.createElement("span");
+      err.className = "err bad";
+      err.textContent = r.error;
+      li.appendChild(err);
+    }
+    list.appendChild(li);
+  }
+
+  const passed = results.filter((r) => r.pass).length;
+  const summary = document.getElementById("summary");
+  summary.textContent = `${passed} / ${results.length} passed`;
+  summary.className = passed === results.length ? "good" : "bad";
+</script>
+</body>
+</html>
