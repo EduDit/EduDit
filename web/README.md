@@ -21,6 +21,15 @@ python -m http.server 8000
 
 then open `http://localhost:8000`.
 
+## Deploy to GitHub Pages
+
+`.github/workflows/pages.yml` auto-builds and deploys this folder to
+GitHub Pages on every push to `main` that touches `web/`. One-time setup:
+in the repo's **Settings → Pages**, set **Build and deployment → Source**
+to **GitHub Actions**. After that, the workflow runs automatically and
+the app is live at `https://<owner>.github.io/<repo>/` — no download, no
+Python, works from any browser (phone, Mac, Chromebook, etc.).
+
 ## Deploy to Cloudflare Pages
 
 **Option A — dashboard:**
