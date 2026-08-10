@@ -19,6 +19,13 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 REPO = "Screen4639/DitDash"
 
+# A reload also fires the "tab closing" beacon (see js/shutdown.js) — the
+# unloading page has no reliable way to tell "I'm about to reload" from "I'm
+# closing for good" apart from timing. So a shutdown request doesn't shut
+# down immediately: it waits this long, and any other request arriving in
+# the meantime (e.g. the reloaded page re-requesting index.html) cancels it.
+SHUTDOWN_GRACE_SECONDS = 1.5
+
 
 def apply_update(target_dir):
     """Download the latest GitHub release and copy its web/ folder over
@@ -59,15 +66,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
 
+    def do_GET(self):
+        self._cancel_shutdown()
+        super().do_GET()
+
+    def do_HEAD(self):
+        self._cancel_shutdown()
+        super().do_HEAD()
+
     def do_POST(self):
         if self.path == "/__shutdown":
             self.send_response(204)
             self.end_headers()
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            self._schedule_shutdown()
         elif self.path == "/__update":
+            self._cancel_shutdown()
             self._handle_update()
         else:
             self.send_error(404)
+
+    def _schedule_shutdown(self):
+        self._cancel_shutdown()
+        timer = threading.Timer(
+            SHUTDOWN_GRACE_SECONDS,
+            lambda: threading.Thread(target=self.server.shutdown, daemon=True).start(),
+        )
+        timer.daemon = True
+        self.server.shutdown_timer = timer
+        timer.start()
+
+    def _cancel_shutdown(self):
+        timer = getattr(self.server, "shutdown_timer", None)
+        if timer:
+            timer.cancel()
+            self.server.shutdown_timer = None
 
     def _handle_update(self):
         try:
@@ -100,6 +132,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    shutdown_timer = None
 
 
 if __name__ == "__main__":

@@ -1,12 +1,9 @@
 // Tells the local dev server (serve.py) to stop when this tab/window is
-// actually closed. Skipped on reload, since that's a real navigation away
-// and back, not the user being done — checked via the Navigation Timing
-// API's entry type rather than the older performance.navigation.type.
-const [navEntry] = performance.getEntriesByType("navigation");
-const isReload = navEntry && navEntry.type === "reload";
-
-if (!isReload) {
-  window.addEventListener("pagehide", () => {
-    navigator.sendBeacon("/__shutdown");
-  });
-}
+// actually closed. A reload also fires pagehide, and there's no reliable
+// way to tell "closing" from "reloading" from this side alone — so this
+// always sends the beacon, and serve.py is the one that actually decides:
+// it holds off shutting down for a moment, and cancels if a new request
+// (the reloaded page re-requesting index.html) shows up in the meantime.
+window.addEventListener("pagehide", () => {
+  navigator.sendBeacon("/__shutdown");
+});
