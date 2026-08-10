@@ -26,6 +26,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def end_headers(self):
+        # This is a dev server for source files that change between runs —
+        # never let the browser cache them, or edits appear to "not work".
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def log_message(self, format, *args):
         pass
 
