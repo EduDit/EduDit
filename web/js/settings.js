@@ -3,6 +3,7 @@
 import * as storage from "./storage.js";
 import { el, button, keyLabel } from "./dom.js";
 import { confirmDialog, alertDialog } from "./dialog.js";
+import { APP_VERSION } from "./version.js";
 
 export class Settings {
   constructor(root, app) {
@@ -33,6 +34,8 @@ export class Settings {
     wrap.appendChild(
       button("Reset this profile's progress", () => this._reset(), "btn-block btn-danger")
     );
+
+    wrap.appendChild(this._versionSection());
 
     this.root.appendChild(wrap);
   }
@@ -259,6 +262,19 @@ export class Settings {
     p.mistakes = {};
     this.app.saveProfile();
     await alertDialog("Progress reset.");
+  }
+
+  _versionSection() {
+    const frame = el("div", { class: "slider-frame center" });
+    frame.appendChild(
+      button("Check for Updates", () => this._openVersionHistory(), "btn-block btn-good")
+    );
+    frame.appendChild(el("p", { class: "small muted center", text: `Version ${APP_VERSION}` }));
+    return frame;
+  }
+
+  _openVersionHistory() {
+    import("./versionHistory.js").then((m) => this.app.show(m.VersionHistory));
   }
 
   _back() {

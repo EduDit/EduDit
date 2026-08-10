@@ -4,6 +4,7 @@
 import { AudioPlayer } from "./audio.js";
 import * as storage from "./storage.js";
 import { ProfileSelect } from "./profileSelect.js";
+import { checkForUpdate, showUpdateBanner } from "./updateCheck.js";
 
 class App {
   constructor(root) {
@@ -20,6 +21,7 @@ class App {
     document.addEventListener("keydown", primeAudio, { once: true });
 
     this.show(ProfileSelect);
+    checkForUpdate().then((info) => info && showUpdateBanner(info));
   }
 
   show(ViewClass, options) {

@@ -46,12 +46,10 @@ To run it by hand instead: `python web/serve.py`, then open
 `http://localhost:8000`. Entry point: [`web/index.html`](web/index.html).
 See [`web/README.md`](web/README.md) for more (deploying, tests, etc.).
 
-**Web app, hosted, no install** — [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
-auto-deploys `web/` to GitHub Pages on every push to `main` that touches it.
-One-time setup: in the repo's **Settings → Pages**, set **Build and
-deployment → Source** to **GitHub Actions**; after that it's live at
-`https://screen4639.github.io/DitDash/`. (Not yet enabled as of this
-writing — that URL currently 404s.)
+**Web app, hosted, no install** — live at
+[`https://screen4639.github.io/DitDash/`](https://screen4639.github.io/DitDash/).
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) auto-deploys
+`web/` to GitHub Pages on every push to `main` that touches it.
 
 **Either app, as a standalone .exe** (no Python needed on the target
 machine) — see [Build an executable](#build-an-executable) below.
@@ -77,7 +75,11 @@ build_web_exe.bat
 This creates `dist\DitDashWeb.exe`, which bundles the web app and a Python
 runtime together — copy just that one file to another Windows PC and
 double-click it; no Python install needed there. It serves the app at
-`http://localhost:8000` and opens it in the default browser.
+`http://localhost:8000` and opens it in the default browser. The first run
+also creates a `DitDashWeb_app` folder next to the `.exe` — a writable copy
+of the web app used so the in-app update button (see
+[Update checks](web/README.md#update-checks)) has somewhere persistent to
+write to; safe to delete to reset to the bundled version.
 
 ## Data & layout
 
@@ -136,6 +138,9 @@ web/                           browser rebuild of the app (see web/README.md)
     scoreboard.js              session score tracking
     audio.js                   tone playback via Web Audio
     dom.js                     shared DOM-building helpers
+    version.js                 app version, compared against GitHub Releases
+    updateCheck.js             checks GitHub for a newer release, shows update banner
+    versionHistory.js          Version History screen (release list + one-click update), from Settings
     shutdown.js                tells serve.py to stop when the tab closes
     *.test.js                  unit tests for the module of the same name
 

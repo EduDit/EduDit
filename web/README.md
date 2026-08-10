@@ -21,6 +21,44 @@ python -m http.server 8000
 
 then open `http://localhost:8000`.
 
+## Update checks
+
+On startup the app checks the repo's [latest GitHub Release](https://github.com/Screen4639/DitDash/releases/latest)
+against the version in `js/version.js` (`js/updateCheck.js`) and shows a
+dismissible banner if a newer one exists. This only fires against real
+releases — pushes to `main` alone don't trigger it, so tag one when you
+want users to be notified:
+
+```
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+then turn that tag into a Release on GitHub (Releases → Draft a new
+release, pick the tag). Also bump `APP_VERSION` in `js/version.js` to
+match, so the running app doesn't immediately re-flag its own release.
+
+The banner's behavior depends on how the app is being served:
+- **`serve.py` / `DitDashWeb.exe`** (served from `localhost`) — an
+  "Update now" button calls `POST /__update`, which has the server
+  download the latest release's `web/` folder and copy it over the
+  running one; the page then reloads. For the packaged exe, the first
+  run seeds a writable `DitDashWeb_app` folder next to the `.exe` (since
+  `--onefile` re-extracts a fresh temp copy on every launch, which
+  wouldn't persist an update) — that folder is what gets updated and
+  served from on subsequent launches.
+- **GitHub Pages / Cloudflare Pages** (hosted, static, read-only) — the
+  button is a "View on GitHub" link instead, since there's no server to
+  ask, and the hosted copy is already always current after Pages'
+  auto-deploy on push to `main`.
+
+Settings also has a green **Check for Updates** button above the current
+version number, which opens **Version History** (`js/versionHistory.js`) —
+every published release with its notes, the same one-click update button
+when a newer one exists, and "Installed" marking whichever release matches
+the running version. Unlike the startup banner, this is reachable any time,
+not just when an update happens to be available.
+
 ## Deploy to GitHub Pages
 
 `.github/workflows/pages.yml` auto-builds and deploys this folder to
