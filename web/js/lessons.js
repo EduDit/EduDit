@@ -11,6 +11,7 @@
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
 import { rankedMistakes, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
+import { confirmDialog } from "./dialog.js";
 
 export class Lessons {
   constructor(root, app) {
@@ -136,8 +137,8 @@ export class Lessons {
     import("./customLessonEditor.js").then((m) => this.app.show(m.CustomLessonEditor, { lessonId: lesson.id }));
   }
 
-  _deleteCustomLesson(lesson) {
-    const ok = window.confirm(`Delete custom lesson '${lesson.name}'?`);
+  async _deleteCustomLesson(lesson) {
+    const ok = await confirmDialog(`Delete custom lesson '${lesson.name}'?`);
     if (!ok) return;
     const p = this.app.profile;
     p.custom_lessons = (p.custom_lessons || []).filter((l) => l.id !== lesson.id);

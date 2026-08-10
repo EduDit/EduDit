@@ -10,6 +10,14 @@ export const QWERTY_ROWS = [
   "ZXCVBNM".split(""),
 ];
 
+// The digit row (row 0) doesn't unlock until deep into the learning order —
+// showing 10 dead keys the whole time forces every other row to shrink to
+// match on narrow screens for no benefit. Callers that build a keyboard
+// gated by an unlocked pool can check this before rendering that row.
+export function isDigit(ch) {
+  return ch >= "0" && ch <= "9";
+}
+
 export function el(tag, opts = {}, children = []) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(opts)) {

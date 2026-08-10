@@ -1,7 +1,7 @@
 // Receive Practice: hear a tone, tap the matching character.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, QWERTY_ROWS } from "./dom.js";
+import { el, button, morseGlyphs, QWERTY_ROWS, isDigit } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
 
 const WRONG_PENALTY = 2;
@@ -37,7 +37,7 @@ export class ReceivePractice {
     top.appendChild(this.levelLbl);
     wrap.appendChild(top);
 
-    this.status = el("p", { class: "heading status center" });
+    this.status = el("p", { class: "heading status center", "aria-live": "polite" });
     wrap.appendChild(this.status);
 
     this.hintViz = el("div", { class: "hint-viz" });
@@ -72,6 +72,7 @@ export class ReceivePractice {
         rowEl.appendChild(key);
       }
       keyboard.appendChild(rowEl);
+      if (row.every(isDigit)) this.digitsRow = rowEl;
     }
     return keyboard;
   }
@@ -147,6 +148,9 @@ export class ReceivePractice {
       key.classList.toggle("key-disabled", !enabled);
       key.classList.remove("key-hint");
     }
+    if (this.digitsRow) {
+      this.digitsRow.style.display = pool.some(isDigit) ? "" : "none";
+    }
   }
 
   play() {
@@ -191,7 +195,9 @@ export class ReceivePractice {
       } else {
         p.receive_streak = Math.max(0, p.receive_streak - WRONG_PENALTY);
       }
-      this._setStatus(`It was  ${this.target}  (${codes.MORSE[this.target]})`, "bad");
+      this._setStatus(`It was  ${this.target}`, "bad");
+      this.hintViz.innerHTML = "";
+      this.hintViz.appendChild(morseGlyphs(codes.MORSE[this.target], "bad"));
       this.app.saveProfile();
       this._updateMeta();
       this._timers.push(setTimeout(() => this.nextRound(), 1300));

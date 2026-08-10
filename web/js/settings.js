@@ -2,6 +2,7 @@
 
 import * as storage from "./storage.js";
 import { el, button, keyLabel } from "./dom.js";
+import { confirmDialog, alertDialog } from "./dialog.js";
 
 export class Settings {
   constructor(root, app) {
@@ -118,10 +119,10 @@ export class Settings {
     const setBtn = button("Set", () => {
       if (setBtn.dataset.listening) return;
       setBtn.dataset.listening = "1";
-      setBtn.textContent = "Press a key…";
+      setBtn.textContent = "Press a key… (Esc to cancel)";
       valueLbl.textContent = "…";
       valueLbl.className = "muted";
-      const onKey = (e) => {
+      const onKey = async (e) => {
         e.preventDefault();
         document.removeEventListener("keydown", onKey, true);
         delete setBtn.dataset.listening;
@@ -131,13 +132,13 @@ export class Settings {
           return;
         }
         if (e.code === "Space") {
-          window.alert("SPACE is reserved for hold-to-send. Pick a different key.");
+          await alertDialog("SPACE is reserved for hold-to-send. Pick a different key.");
           this._rebuild();
           return;
         }
         const other = field === "dotKey" ? "dashKey" : "dotKey";
         if (this.app.profile.settings[other] === e.code) {
-          window.alert("That key is already assigned to the other symbol.");
+          await alertDialog("That key is already assigned to the other symbol.");
           this._rebuild();
           return;
         }
@@ -241,8 +242,8 @@ export class Settings {
     this.app.audio.testTone(s.freq, s.volume);
   }
 
-  _reset() {
-    const ok = window.confirm(
+  async _reset() {
+    const ok = await confirmDialog(
       `Reset all levels and streaks for '${this.app.profileName}'?\nSpeed and pitch settings are kept.`
     );
     if (!ok) return;
@@ -257,7 +258,7 @@ export class Settings {
     p.send_miss_streak = {};
     p.mistakes = {};
     this.app.saveProfile();
-    window.alert("Progress reset.");
+    await alertDialog("Progress reset.");
   }
 
   _back() {

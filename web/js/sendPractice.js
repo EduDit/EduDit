@@ -91,7 +91,7 @@ export class SendPractice {
     this.patternLbl = el("p", { class: "pattern" });
     wrap.appendChild(this.patternLbl);
 
-    this.status = el("p", { class: "heading status center" });
+    this.status = el("p", { class: "heading status center", "aria-live": "polite" });
     wrap.appendChild(this.status);
 
     this.streakLbl = el("p", { class: "small muted center" });
@@ -291,8 +291,10 @@ export class SendPractice {
       } else {
         p.send_streak = Math.max(0, p.send_streak - WRONG_PENALTY);
       }
-      const sent = this.pattern + (guess ? ` = ${guess}` : "");
-      this._setStatus(`You sent ${sent}\n${this.target} is ${correctPattern}`, "bad");
+      const decodedNote = guess ? `  (you sent ${guess})` : "  (not a valid pattern)";
+      this._setStatus(`${this.target} is:${decodedNote}`, "bad");
+      this.hintViz.innerHTML = "";
+      this.hintViz.appendChild(morseGlyphs(correctPattern, "bad"));
       this.app.saveProfile();
       this._updateMeta();
       this.roundTimer = setTimeout(() => this.nextRound(), 1600);

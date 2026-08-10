@@ -60,7 +60,7 @@ export class ProfileSelect {
     entryRow.appendChild(button("Create", () => this._create(), "btn-accent"));
     wrap.appendChild(entryRow);
 
-    this.error = el("p", { class: "small error" });
+    this.error = el("p", { class: "small error", "aria-live": "polite" });
     wrap.appendChild(this.error);
 
     this.root.appendChild(wrap);
@@ -88,7 +88,7 @@ export class ProfileSelect {
       inputmode: "numeric",
       maxlength: "8",
     });
-    const errorLbl = el("span", { class: "small error" });
+    const errorLbl = el("span", { class: "small error", "aria-live": "polite" });
 
     const submit = () => {
       if (storage.verifyPin(profile, input.value)) {

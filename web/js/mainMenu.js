@@ -114,7 +114,10 @@ export class MainMenu {
   }
 
   _customLesson() {
-    import("./customLessonEditor.js").then((m) => this.app.show(m.CustomLessonEditor));
+    // Go to the Lessons screen's Custom Lessons section rather than straight
+    // to the "new lesson" editor — otherwise anyone with an existing custom
+    // lesson never sees it from this button, only the blank creation form.
+    import("./lessons.js").then((m) => this.app.show(m.Lessons));
   }
 
   _listen() {

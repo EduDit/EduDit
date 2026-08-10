@@ -4,7 +4,7 @@
 // running. No answering, no scoring — pure ear training in the background.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs } from "./dom.js";
+import { el, button, morseGlyphs, isDigit } from "./dom.js";
 import { clamp } from "./learning.js";
 
 const MIN_REPEATS = 1;
@@ -64,7 +64,7 @@ export class ListenPractice {
     this.glyphWrap = el("div", { class: "hint-viz" });
     wrap.appendChild(this.glyphWrap);
 
-    this.status = el("p", { class: "heading status center" });
+    this.status = el("p", { class: "heading status center", "aria-live": "polite" });
     wrap.appendChild(this.status);
 
     wrap.appendChild(this._repeatStepper());
@@ -214,6 +214,7 @@ export class ListenPractice {
         rowEl.appendChild(key);
       }
       keyboard.appendChild(rowEl);
+      if (row.every(isDigit)) this.digitsRow = rowEl;
     }
     return keyboard;
   }
@@ -225,6 +226,9 @@ export class ListenPractice {
       const enabled = unlocked.has(ch);
       key.disabled = !enabled;
       key.classList.toggle("key-disabled", !enabled);
+    }
+    if (this.digitsRow) {
+      this.digitsRow.style.display = pool.some(isDigit) ? "" : "none";
     }
   }
 

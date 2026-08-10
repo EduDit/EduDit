@@ -47,7 +47,7 @@ export class CustomLessonEditor {
 
     wrap.appendChild(this._buildPicker());
 
-    this.error = el("p", { class: "small error" });
+    this.error = el("p", { class: "small error", "aria-live": "polite" });
     wrap.appendChild(this.error);
 
     const actionRow = el("div", { class: "button-row" });
