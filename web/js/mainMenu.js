@@ -46,6 +46,10 @@ export class MainMenu {
     bottomRow.appendChild(button("Settings", () => this._settings(), "btn-panel"));
     wrap.appendChild(bottomRow);
 
+    const customRow = el("div", { class: "button-row" });
+    customRow.appendChild(button("Custom Lesson  🔤", () => this._customLesson(), "btn-panel btn-block"));
+    wrap.appendChild(customRow);
+
     this.root.appendChild(wrap);
   }
 
@@ -107,6 +111,10 @@ export class MainMenu {
 
   _lessons() {
     import("./lessons.js").then((m) => this.app.show(m.Lessons));
+  }
+
+  _customLesson() {
+    import("./customLessonEditor.js").then((m) => this.app.show(m.CustomLessonEditor));
   }
 
   _listen() {
