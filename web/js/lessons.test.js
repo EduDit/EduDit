@@ -43,24 +43,24 @@ test("each rendered lesson lists exactly its own CHARS_PER_LEVEL letters", () =>
   });
 });
 
-test("Weak Point Review shows a placeholder when nothing has been missed yet", () => {
+test("no auto Weak Letters card shows when nothing has been missed yet", () => {
   const root = document.createElement("div");
   new Lessons(root, fakeApp(1, 1, { mistakes: {} }));
-  const card = root.querySelector(".weak-review-card");
-  assert(card, "expected a .weak-review-card");
-  assertEqual(card.querySelectorAll("button").length, 0);
+  const card = root.querySelector(".auto-lesson-card");
+  assert(!card, "expected no .auto-lesson-card");
 });
 
-test("Weak Point Review ranks missed letters worst-first and offers Receive/Send", () => {
+test("Weak Letters ranks missed letters worst-first and offers Receive/Send", () => {
   const root = document.createElement("div");
   new Lessons(root, fakeApp(1, 1, { mistakes: { A: 1, B: 5 } }));
-  const card = root.querySelector(".weak-review-card");
+  const card = root.querySelector(".auto-lesson-card");
+  assert(card, "expected a .auto-lesson-card");
   assertEqual(card.querySelector(".pool").textContent, "B (5)   A (1)");
   const buttons = [...card.querySelectorAll("button")].map((b) => b.textContent);
   assertEqual(buttons, ["Receive", "Send"]);
 });
 
-test("with no custom lessons, only the 'New custom lesson' button shows", () => {
+test("with no custom lessons and no mistakes, only the 'New custom lesson' button shows", () => {
   const root = document.createElement("div");
   new Lessons(root, fakeApp(1, 1));
   assertEqual(root.querySelectorAll(".custom-lesson-card").length, 0);

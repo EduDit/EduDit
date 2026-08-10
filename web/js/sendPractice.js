@@ -286,6 +286,8 @@ export class SendPractice {
       missStreaks[this.target] = (missStreaks[this.target] || 0) + 1;
       p.mistakes = p.mistakes || {};
       p.mistakes[this.target] = (p.mistakes[this.target] || 0) + 1;
+      p.send_mistakes = p.send_mistakes || {};
+      p.send_mistakes[this.target] = (p.send_mistakes[this.target] || 0) + 1;
       if (this.lessonChars) {
         this.sessionTotal += 1;
       } else {

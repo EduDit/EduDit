@@ -190,6 +190,8 @@ export class ReceivePractice {
       p.receive_miss_streak[this.target] = (p.receive_miss_streak[this.target] || 0) + 1;
       p.mistakes = p.mistakes || {};
       p.mistakes[this.target] = (p.mistakes[this.target] || 0) + 1;
+      p.receive_mistakes = p.receive_mistakes || {};
+      p.receive_mistakes[this.target] = (p.receive_mistakes[this.target] || 0) + 1;
       if (this.lessonChars) {
         this.sessionTotal += 1;
       } else {

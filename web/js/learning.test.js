@@ -11,6 +11,7 @@ import {
   pickWeighted,
   clamp,
   rankedMistakes,
+  accuracyRows,
 } from "./learning.js";
 
 test("documented thresholds: 2 free appearances, 3 misses in a row to re-trigger", () => {
@@ -165,4 +166,25 @@ test("rankedMistakes respects the limit", () => {
 test("rankedMistakes is empty for a missing or empty mistakes map", () => {
   assertEqual(rankedMistakes(undefined), []);
   assertEqual(rankedMistakes({}), []);
+});
+
+test("accuracyRows only includes attempted letters, sorted worst-first", () => {
+  const seen = { A: 10, B: 4, C: 5 };
+  const mistakes = { A: 1, B: 4 };
+  const rows = accuracyRows(seen, mistakes, ["A", "B", "C", "D"]);
+  assertEqual(rows.map((r) => r.ch), ["B", "A", "C"]);
+  assertEqual(rows[0], { ch: "B", attempts: 4, misses: 4, pct: 0 });
+  assertEqual(rows[1], { ch: "A", attempts: 10, misses: 1, pct: 90 });
+  assertEqual(rows[2], { ch: "C", attempts: 5, misses: 0, pct: 100 });
+});
+
+test("accuracyRows breaks equal-accuracy ties by more attempts first", () => {
+  const seen = { A: 2, B: 8 };
+  const mistakes = { A: 1, B: 4 };
+  const rows = accuracyRows(seen, mistakes, ["A", "B"]);
+  assertEqual(rows.map((r) => r.ch), ["B", "A"]);
+});
+
+test("accuracyRows is empty when nothing has been attempted", () => {
+  assertEqual(accuracyRows({}, {}, ["A", "B"]), []);
 });

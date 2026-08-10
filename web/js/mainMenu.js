@@ -37,7 +37,7 @@ export class MainMenu {
       )
     );
 
-    wrap.appendChild(this._weakLettersCard());
+    wrap.appendChild(this._customLessonsCard(p));
 
     const bottomRow = el("div", { class: "button-row" });
     bottomRow.appendChild(button("Listen  🎧", () => this._listen(), "btn-panel"));
@@ -46,32 +46,36 @@ export class MainMenu {
     bottomRow.appendChild(button("Settings", () => this._settings(), "btn-panel"));
     wrap.appendChild(bottomRow);
 
-    const customRow = el("div", { class: "button-row" });
-    customRow.appendChild(button("Custom Lesson  🔤", () => this._customLesson(), "btn-panel btn-block"));
-    wrap.appendChild(customRow);
-
     this.root.appendChild(wrap);
   }
 
-  _weakLettersCard() {
+  // Entry point into the Lessons screen's Custom Lessons section, which now
+  // also holds the auto-updating Weak Letters drill — so this card previews
+  // whichever of the two is most useful right now instead of duplicating a
+  // separate "Weak letters" feature on the main menu.
+  _customLessonsCard(p) {
     const card = el("div", { class: "card" });
-    card.appendChild(el("span", { class: "heading", text: "Weak letters" }));
+    card.appendChild(el("span", { class: "heading", text: "Custom Lessons" }));
 
-    const ranked = rankedMistakes(this.app.profile.mistakes, 5);
+    const ranked = rankedMistakes(p.mistakes, 5);
+    const customCount = (p.custom_lessons || []).length;
 
     if (ranked.length === 0) {
-      card.appendChild(
-        el("p", { class: "small muted", text: "None yet — keep practicing!" })
-      );
+      const text =
+        customCount > 0
+          ? `${customCount} saved lesson${customCount === 1 ? "" : "s"} — pick your own letters to drill, too.`
+          : "Pick your own set of letters to drill, or build up some practice to see your weak letters here.";
+      card.appendChild(el("p", { class: "small muted", text }));
     } else {
+      card.appendChild(el("p", { class: "small muted", text: "Weak letters:" }));
       const list = el("p", { class: "mono pool" });
       list.textContent = ranked.map(([ch, count]) => `${ch} (${count})`).join("   ");
       card.appendChild(list);
-
-      const startRow = el("div", { class: "row end" });
-      startRow.appendChild(button("Review  ▶", () => this._lessons(), "btn-block-inline"));
-      card.appendChild(startRow);
     }
+
+    const startRow = el("div", { class: "row end" });
+    startRow.appendChild(button("Open  ▶", () => this._lessons(), "btn-block-inline"));
+    card.appendChild(startRow);
     return card;
   }
 
@@ -110,13 +114,6 @@ export class MainMenu {
   }
 
   _lessons() {
-    import("./lessons.js").then((m) => this.app.show(m.Lessons));
-  }
-
-  _customLesson() {
-    // Go to the Lessons screen's Custom Lessons section rather than straight
-    // to the "new lesson" editor — otherwise anyone with an existing custom
-    // lesson never sees it from this button, only the blank creation form.
     import("./lessons.js").then((m) => this.app.show(m.Lessons));
   }
 

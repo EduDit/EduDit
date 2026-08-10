@@ -90,16 +90,17 @@ No environment variables, secrets, or backend services are required.
 Levels still unlock characters in small batches and require a streak of
 correct answers to clear (see `js/learning.js` — the streak needed grows
 with level, capped at `MAX_STREAK_TO_CLEAR`). The **Lessons** screen (from
-the main menu) has three ways to drill specific characters — none of them
-touch your level or streak, and all score only for the current session:
+the main menu's Custom Lessons card, or the bottom-row Lessons button) has
+two ways to drill specific characters — neither touches your level or
+streak, and both score only for the current session:
 
-- **Weak Point Review** — auto-built from whichever letters you've missed
-  most (`rankedMistakes` in `js/learning.js`), with one tap into Receive or
-  Send practice for just those letters. Also reachable via the "Review"
-  button on the main menu's Weak letters card.
 - **Custom Lessons** — name a set of characters yourself (a stubborn letter,
   a random mix, anything) via the on-screen character picker, and it's
-  saved to your profile for reuse, edit, or delete.
+  saved to your profile for reuse, edit, or delete. The first entry, **Weak
+  Letters**, is a pinned, auto-updating lesson built from whichever letters
+  you've missed most (`rankedMistakes` in `js/learning.js`) — it can't be
+  edited or deleted, since it just recomputes from your mistake history on
+  every visit.
 - **Unlocked Lessons** — every batch of letters unlocked so far, same as
   before, for jumping back into any of them.
 
@@ -107,14 +108,28 @@ In all practice modes, letters you've been missing more often are weighted
 to come up more frequently than ones you already have down (`charWeight` /
 `pickWeighted` in `js/learning.js`).
 
+## Scoreboard
+
+Beyond comparing profiles' levels (`js/scoreboard.js`), the Scoreboard is
+also where per-letter accuracy lives: pick a profile from the comparison
+table, then switch between the **Receive** and **Send** tabs (they're
+scored independently — `receive_mistakes`/`receive_seen` vs.
+`send_mistakes`/`send_seen` on the profile) to see every attempted letter's
+hit rate, worst-first (`accuracyRows` in `js/learning.js`). For the profile
+you're currently signed in as, a **Practice these** button jumps straight
+into Receive/Send practice scoped to that tab's worst letters, and a
+**Custom Lessons** button links over to the Weak Letters lesson described
+above.
+
 ## Tests
 
 `test.html` is a small dependency-free test page covering the pure game
 logic — Morse lookup tables, level/lesson pool sizing, the new-letter hint
-rules, streak-to-clear scaling, and trouble-letter weighting, all in
-`js/learning.js` and `js/codes.js` — plus the Lessons screen's rendering
-(including Weak Point Review and Custom Lessons) and the custom lesson
-editor's save/validate/edit behavior.
+rules, streak-to-clear scaling, trouble-letter weighting, and per-letter
+accuracy ranking, all in `js/learning.js` and `js/codes.js` — plus the
+Lessons screen's rendering (including the auto Weak Letters lesson and
+user-made Custom Lessons), the custom lesson editor's save/validate/edit
+behavior, and the Scoreboard's profile comparison and accuracy tabs.
 Serve this folder as above, then open `http://localhost:8000/test.html` —
 it runs in-browser and lists each assertion as PASS/FAIL, no Node or build
 step required.

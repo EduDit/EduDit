@@ -1,10 +1,10 @@
-// Lessons: three ways to drill specific characters without touching level
-// or streak progress — practice here is scored only for the current session.
+// Lessons: two ways to drill specific characters without touching level or
+// streak progress — practice here is scored only for the current session.
 //
-// - Weak Point Review: auto-built from whichever letters have the most
-//   recorded mistakes (see rankedMistakes in learning.js).
-// - Custom Lessons: hand-picked sets of characters the learner defines
-//   themselves, saved on the profile.
+// - Custom Lessons: hand-picked sets of characters, plus one pinned,
+//   auto-generated entry ("Weak Letters") built from whichever letters have
+//   the most recorded mistakes (see rankedMistakes in learning.js) — it
+//   can't be edited or deleted, it just recomputes on every visit.
 // - Unlocked Lessons: every batch of letters introduced so far, same as
 //   before — lets a learner jump back into any of them for review.
 
@@ -29,8 +29,6 @@ export class Lessons {
     top.appendChild(el("span", { class: "heading", text: "Lessons" }));
     wrap.appendChild(top);
 
-    wrap.appendChild(this._weakReviewCard(p));
-
     wrap.appendChild(el("div", { class: "divider" }));
     wrap.appendChild(el("p", { class: "heading", text: "Custom Lessons" }));
     wrap.appendChild(
@@ -39,10 +37,12 @@ export class Lessons {
         text: "Pick your own set of letters to drill — good for one stubborn character or a random mix.",
       })
     );
+    const weakCard = this._weakLessonCard(p);
     const customLessons = p.custom_lessons || [];
-    if (customLessons.length === 0) {
+    if (!weakCard && customLessons.length === 0) {
       wrap.appendChild(el("p", { class: "small muted", text: "No custom lessons yet." }));
     } else {
+      if (weakCard) wrap.appendChild(weakCard);
       for (const lesson of customLessons) {
         wrap.appendChild(this._customLessonRow(lesson));
       }
@@ -63,20 +63,24 @@ export class Lessons {
     this.root.appendChild(wrap);
   }
 
-  _weakReviewCard(p) {
-    const card = el("div", { class: "card weak-review-card" });
-    card.appendChild(el("span", { class: "heading", text: "Weak Point Review" }));
-    card.appendChild(
-      el("p", { class: "small muted", text: "Drills only the letters you miss most often." })
-    );
-
+  // The pinned, auto-updating "Weak Letters" entry — recomputed from
+  // rankedMistakes on every visit rather than saved, so it can't drift out
+  // of date and there's nothing to edit or delete. Returns null once there
+  // are no recorded mistakes yet, so it can be omitted entirely.
+  _weakLessonCard(p) {
     const ranked = rankedMistakes(p.mistakes, WEAK_REVIEW_POOL_SIZE);
-    if (ranked.length === 0) {
-      card.appendChild(
-        el("p", { class: "small muted", text: "None yet — keep practicing and your weak letters will show up here." })
-      );
-      return card;
-    }
+    if (ranked.length === 0) return null;
+
+    const card = el("div", { class: "card custom-lesson-card auto-lesson-card" });
+    const row = el("div", { class: "row" });
+    const titleWrap = el("div", { class: "row title-wrap" });
+    titleWrap.appendChild(el("span", { class: "heading", text: "Weak Letters" }));
+    titleWrap.appendChild(el("span", { class: "badge", text: "Auto" }));
+    row.appendChild(titleWrap);
+    card.appendChild(row);
+    card.appendChild(
+      el("p", { class: "small muted", text: "Updates itself from whichever letters you miss most often." })
+    );
 
     const list = el("p", { class: "mono pool" });
     list.textContent = ranked.map(([ch, count]) => `${ch} (${count})`).join("   ");

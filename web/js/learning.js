@@ -75,3 +75,19 @@ export function rankedMistakes(mistakes, limit = Infinity) {
 // How many of the worst letters Weak Point Review pulls in at once — enough
 // to be a real drill without diluting in letters that are only mildly shaky.
 export const WEAK_REVIEW_POOL_SIZE = 8;
+
+// Per-letter accuracy for one practice mode (Receive or Send), worst-first —
+// backs the Scoreboard's letter-by-letter breakdown. Only includes letters
+// that have actually been attempted; `order` (typically LEARNING_ORDER) just
+// controls tie-break order for letters attempted an equal number of times.
+export function accuracyRows(seen, mistakes, order) {
+  return order
+    .filter((ch) => (seen[ch] || 0) > 0)
+    .map((ch) => {
+      const attempts = seen[ch] || 0;
+      const misses = mistakes[ch] || 0;
+      const pct = Math.round(((attempts - misses) / attempts) * 100);
+      return { ch, attempts, misses, pct };
+    })
+    .sort((a, b) => a.pct - b.pct || b.attempts - a.attempts);
+}
