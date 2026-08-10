@@ -20,7 +20,12 @@ Characters unlock shortest-Morse-first, then digits:
 Timing follows standard PARIS units: `unit = 1200 / wpm` ms, a dash is three
 dots, and gaps between elements are one unit.
 
-## Run from source
+## Getting started
+
+There are two versions of the app — the original tkinter desktop app and a
+browser-based rebuild (`web/`) with the same features. Pick whichever fits:
+
+**Desktop app, from source** (Windows, needs Python):
 
 ```bat
 python -m venv .venv
@@ -31,7 +36,25 @@ python main.py
 
 In VS Code, open this folder and press **F5** (the interpreter is preset to
 `./.venv`). No third-party packages are needed to run — only the standard
-library.
+library. Entry point: [`main.py`](main.py).
+
+**Web app, from source** (any OS, needs Python to serve it locally):
+
+Double-click [`run_web.bat`](run_web.bat) or [`run_web.vbs`](run_web.vbs) at
+the repo root — it starts a local server and opens the app in your browser.
+To run it by hand instead: `python web/serve.py`, then open
+`http://localhost:8000`. Entry point: [`web/index.html`](web/index.html).
+See [`web/README.md`](web/README.md) for more (deploying, tests, etc.).
+
+**Web app, hosted, no install** — [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
+auto-deploys `web/` to GitHub Pages on every push to `main` that touches it.
+One-time setup: in the repo's **Settings → Pages**, set **Build and
+deployment → Source** to **GitHub Actions**; after that it's live at
+`https://screen4639.github.io/DitDash/`. (Not yet enabled as of this
+writing — that URL currently 404s.)
+
+**Either app, as a standalone .exe** (no Python needed on the target
+machine) — see [Build an executable](#build-an-executable) below.
 
 ## Build an executable
 
@@ -72,14 +95,49 @@ the app and no profiles exist yet, it is imported as a profile named
 ## Project structure
 
 ```
-main.py                 entry point (Profile Select -> Main Menu)
-morse/codes.py          Morse table, learning order, level helpers
-morse/audio.py          tone playback via winsound
-morse/storage.py        per-profile JSON load/save
-ui/theme.py             shared colors and fonts
-ui/profile_select.py    pick or create a profile
-ui/main_menu.py         mode selection
-ui/receive_practice.py  listen-and-tap drill
-ui/send_practice.py     key-it-out drill
-ui/settings_screen.py   per-profile settings
+main.py                        desktop entry point (Profile Select -> Main Menu)
+web_launcher.py                standalone web launcher, packaged into DitDashWeb.exe
+build_exe.bat                  build dist\DitDash.exe (desktop app)
+build_web_exe.bat              build dist\DitDashWeb.exe (web app, bundled Python)
+run_web.bat / run_web.vbs      run the web app locally (needs Python installed)
+assets/icon.ico                app icon used by both .exe builds
+
+morse/                         desktop app: game logic
+  codes.py                     Morse table, learning order, level helpers
+  audio.py                     tone playback via winsound
+  storage.py                   per-profile JSON load/save (data/)
+
+ui/                            desktop app: tkinter screens
+  theme.py                     shared colors and fonts
+  profile_select.py            pick or create a profile
+  main_menu.py                 mode selection
+  receive_practice.py          listen-and-tap drill
+  send_practice.py             key-it-out drill
+  settings_screen.py           per-profile settings
+
+web/                           browser rebuild of the app (see web/README.md)
+  index.html                   page shell / entry point
+  serve.py                     local static file server (also used by web_launcher.py)
+  styles.css                   all styling
+  test.html                    in-browser test runner (no Node/build step)
+  js/
+    app.js                     app entry point, screen switching
+    codes.js                   Morse table (mirrors morse/codes.py)
+    learning.js                level/lesson pools, streaks, weak-letter weighting
+    lessons.js                 Lessons screen (weak point review, custom, unlocked)
+    customLessonEditor.js      create/edit a custom lesson
+    storage.js                 per-profile load/save via localStorage
+    profileSelect.js           pick or create a profile
+    mainMenu.js                mode selection
+    receivePractice.js         listen-and-tap drill
+    sendPractice.js            key-it-out drill
+    listenPractice.js          "listen only" playback mode
+    settings.js                per-profile settings
+    scoreboard.js              session score tracking
+    audio.js                   tone playback via Web Audio
+    dom.js                     shared DOM-building helpers
+    shutdown.js                tells serve.py to stop when the tab closes
+    *.test.js                  unit tests for the module of the same name
+
+.github/workflows/pages.yml    auto-deploys web/ to GitHub Pages on push to main
 ```
