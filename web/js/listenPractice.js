@@ -47,7 +47,7 @@ export class ListenPractice {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this._back()));
+    top.appendChild(button("< Menu", () => this.goBack()));
     top.appendChild(el("span", { class: "heading", text: "Listen Practice" }));
     wrap.appendChild(top);
 
@@ -92,8 +92,10 @@ export class ListenPractice {
 
     const stepRow = el("div", { class: "entry-row" });
     const minus = button("−", () => this._changeRepeats(-1), "btn-panel");
+    minus.setAttribute("aria-label", "Decrease repeats per letter");
     this.repeatLbl = el("span", { class: "good mono", text: String(this._repeats()) });
     const plus = button("+", () => this._changeRepeats(1), "btn-panel");
+    plus.setAttribute("aria-label", "Increase repeats per letter");
     stepRow.appendChild(minus);
     stepRow.appendChild(this.repeatLbl);
     stepRow.appendChild(plus);
@@ -127,8 +129,10 @@ export class ListenPractice {
 
     const stepRow = el("div", { class: "entry-row" });
     const minus = button("−", () => this._changeRepeatGap(-1), "btn-panel");
+    minus.setAttribute("aria-label", "Decrease pause between repeats");
     this.repeatGapLbl = el("span", { class: "good mono", text: String(this._repeatGapUnits()) });
     const plus = button("+", () => this._changeRepeatGap(1), "btn-panel");
+    plus.setAttribute("aria-label", "Increase pause between repeats");
     stepRow.appendChild(minus);
     stepRow.appendChild(this.repeatGapLbl);
     stepRow.appendChild(plus);
@@ -157,8 +161,10 @@ export class ListenPractice {
 
     const stepRow = el("div", { class: "entry-row" });
     const minus = button("−", () => this._changeGap(-1), "btn-panel");
+    minus.setAttribute("aria-label", "Decrease pause between letters");
     this.gapLbl = el("span", { class: "good mono", text: String(this._gapUnits()) });
     const plus = button("+", () => this._changeGap(1), "btn-panel");
+    plus.setAttribute("aria-label", "Increase pause between letters");
     stepRow.appendChild(minus);
     stepRow.appendChild(this.gapLbl);
     stepRow.appendChild(plus);
@@ -359,7 +365,7 @@ export class ListenPractice {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  _back() {
+  goBack() {
     import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 

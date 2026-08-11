@@ -23,6 +23,30 @@ class App {
     this._applyTheme();
     this.show(ProfileSelect);
     checkForUpdate().then((info) => info && showUpdateBanner(info));
+
+    // Global Esc-to-go-back and "?"-for-shortcuts-help, so every screen gets
+    // both for free from one place instead of each wiring its own. Both
+    // share the same guard: skipped while typing in a text field, while a
+    // dialog.js/shortcutsHelp.js overlay is open (checked directly since
+    // it's a same-phase document listener too — added after this one, so it
+    // would otherwise fire second and too late to stop this from also
+    // firing), and naturally skipped during Settings' key-rebind capture
+    // (that one uses a capture-phase listener and calls preventDefault()
+    // first, which always runs before this bubble-phase listener regardless
+    // of add order).
+    document.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented) return;
+      if (e.key !== "Escape" && e.key !== "?") return;
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (document.querySelector(".dialog-overlay")) return;
+
+      if (e.key === "Escape") {
+        if (this._view && typeof this._view.goBack === "function") this._view.goBack();
+      } else {
+        import("./shortcutsHelp.js").then((m) => m.showShortcutsHelp(this));
+      }
+    });
   }
 
   show(ViewClass, options) {

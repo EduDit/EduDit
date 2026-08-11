@@ -41,13 +41,19 @@ export class ProfileSelect {
 
     wrap.appendChild(el("h2", { class: "heading", text: "New profile" }));
     const entryRow = el("div", { class: "entry-row" });
-    const input = el("input", { class: "text-input", type: "text", placeholder: "Name" });
+    const input = el("input", {
+      class: "text-input",
+      type: "text",
+      placeholder: "Name",
+      "aria-label": "New profile name",
+    });
     const pinInput = el("input", {
       class: "text-input pin-field",
       type: "password",
       inputmode: "numeric",
       maxlength: "8",
       placeholder: "PIN (optional)",
+      "aria-label": "New profile PIN, optional",
     });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this._create();
@@ -130,7 +136,12 @@ export class ProfileSelect {
       return;
     }
     storage.createProfile(name, this.pinInput.value);
-    this._enter(name);
+    // New profiles only — existing profiles always skip straight to
+    // MainMenu via _enter()/_choose() below, regardless of their
+    // `onboarded` value, since profiles saved before this feature existed
+    // have no `onboarded` field and would otherwise default to false.
+    this.app.loadProfile(name);
+    import("./onboarding.js").then((m) => this.app.show(m.Onboarding));
   }
 
   destroy() {}

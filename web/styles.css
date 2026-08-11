@@ -294,9 +294,15 @@ html, body {
   padding: 3px 9px;
 }
 .level-tag { color: var(--good); font-size: 14px; font-weight: 600; }
+.badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .pool { color: var(--accent); margin: 8px 0 4px; word-break: break-all; }
 
 .divider { height: 1px; background: var(--border); margin: 24px 0; }
+
+/* Home dashboard's single dominant action */
+.hero-card { border-color: var(--accent); }
+
+.onboarding-points p { margin: 6px 0; }
 
 .profile-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -442,9 +448,116 @@ input[type="range"] {
   .keyboard-row { gap: 3px; }
 }
 
+/* Landscape phones: the single-column layout still works, but tall-content
+   screens (Journey, Lessons) benefit from a touch more breathing room and a
+   shorter sticky header so the primary action isn't pushed off-screen. */
+@media (max-height: 420px) and (orientation: landscape) {
+  .header-row { padding-top: 8px; padding-bottom: 8px; }
+  .title { margin: 12px 0 4px; }
+  .big-char { font-size: clamp(48px, 12vw, 84px); margin: 2px 0 6px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* Stat tiles: compact at-a-glance dashboard numbers (Home). Pair every value
+   with a label so a screen reader announces both, never a bare number. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.stat-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  text-align: left;
+}
+.stat-value { display: block; font-size: 20px; font-weight: 750; letter-spacing: -0.02em; color: var(--fg); }
+.stat-label { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+/* Character-state badges (Journey, Weak Letters): each state pairs a shape
+   with a color so state is never color-only. */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  border: 1px solid var(--border);
+}
+.state-badge.state-strong { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+.state-badge.state-practicing { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.state-badge.state-learning { background: var(--panel-2); color: var(--fg); }
+.state-badge.state-locked { background: transparent; color: var(--muted); opacity: 0.6; }
+.state-badge.state-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
+
+/* Morse Journey: a flowing grid of character badges, not a data table. */
+.journey-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.journey-grid .state-badge {
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+  gap: 4px;
+}
+
+/* Toast: non-blocking, auto-dismissing notice (adaptive-learning asides,
+   achievement unlocks) — distinct from dialog.js's blocking modal. */
+.toast-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  display: flex;
+  justify-content: center;
+  padding: 0 18px;
+  z-index: 900;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: 420px;
+  width: 100%;
+  background: var(--surface);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--fg);
+  animation: toast-in 0.18s ease;
+}
+.toast.toast-out { animation: toast-out 0.18s ease forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(6px); } }
+
+/* Restrained feedback keyframes — correct pulse, level-up, unlock reveal. */
+@keyframes pulse-good {
+  0% { box-shadow: 0 0 0 0 var(--good-soft); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.pulse-good { animation: pulse-good 0.5s ease; }
+.pop-in { animation: pop-in 0.2s ease; }
 
 .dialog-overlay {
   position: fixed;
@@ -471,3 +584,7 @@ input[type="range"] {
 }
 .dialog-message { white-space: pre-line; margin: 0 0 16px; }
 .dialog-box .button-row { margin: 0; }
+
+.shortcut-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 16px; }
+.shortcut-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.shortcut-key { flex: 0 0 auto; min-width: 100px; color: var(--accent); }

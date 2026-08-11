@@ -44,3 +44,14 @@ export function lessonChars(lessonNumber) {
 export function charFromPattern(pattern) {
   return PATTERN_TO_CHAR[pattern] || null;
 }
+
+// Speaks a dot/dash pattern as a short rhythm phrase (e.g. "-..." -> "dah,
+// dit, dit, dit"), the conventional way Morse is voiced aloud when teaching
+// it. Purely a presentation helper for the New Character teaching card —
+// not used by any timing or decoding logic.
+export function rhythmPhrase(pattern) {
+  return pattern
+    .split("")
+    .map((s) => (s === "." ? "dit" : "dah"))
+    .join(", ");
+}

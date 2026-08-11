@@ -1,8 +1,15 @@
-// Main menu: choose a practice mode, open settings, or switch profile.
+// Home dashboard: answers "what should I do next?" with one dominant
+// action, a compact progress summary, and quick access to everything else
+// for returning/experienced users who already know what they want.
 
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
-import { rankedMistakes } from "./learning.js";
+import { streakToClear } from "./learning.js";
+import { getRecommendation } from "./recommendation.js";
+import { tierLetters, combinedSeen } from "./weakLetters.js";
+import { todayMs, streakDays } from "./dailyPractice.js";
+
+const DAILY_GOAL_MINUTES = 5;
 
 export class MainMenu {
   constructor(root, app) {
@@ -17,83 +24,138 @@ export class MainMenu {
 
     const header = el("div", { class: "row header-row" });
     header.appendChild(el("div", { class: "title", text: this.app.profileName, style: { margin: "0" } }));
-    header.appendChild(button("Switch profile", () => this._switch()));
+    header.appendChild(button("Switch profile", () => this._switch(), "btn-panel"));
     wrap.appendChild(header);
 
-    wrap.appendChild(
-      this._modeCard(
-        "Receive Practice",
-        "Hear a tone, tap the character.",
-        p.receive_level,
-        () => this._receive()
-      )
-    );
-    wrap.appendChild(
-      this._modeCard(
-        "Send Practice",
-        "See a character, key it out.",
-        p.send_level,
-        () => this._send()
-      )
-    );
-
-    wrap.appendChild(this._customLessonsCard(p));
-
-    const bottomRow = el("div", { class: "button-row" });
-    bottomRow.appendChild(button("Listen  🎧", () => this._listen(), "btn-panel"));
-    bottomRow.appendChild(button("Scoreboard  🏆", () => this._scoreboard(), "btn-panel"));
-    bottomRow.appendChild(button("Settings", () => this._settings(), "btn-panel"));
-    wrap.appendChild(bottomRow);
+    const rec = getRecommendation(p);
+    wrap.appendChild(this._heroCard(rec));
+    wrap.appendChild(this._statsSection(p, rec));
+    wrap.appendChild(this._todaysPracticeCard(p));
+    wrap.appendChild(this._quickAccess());
 
     this.root.appendChild(wrap);
   }
 
-  // Entry point into the Lessons screen's Custom Lessons section, which now
-  // also holds the auto-updating Weak Letters drill — so this card previews
-  // whichever of the two is most useful right now instead of duplicating a
-  // separate "Weak letters" feature on the main menu.
-  _customLessonsCard(p) {
-    const card = el("div", { class: "card" });
-    card.appendChild(el("span", { class: "heading", text: "Custom Lessons" }));
-
-    const ranked = rankedMistakes(p.mistakes, 5);
-    const customCount = (p.custom_lessons || []).length;
-
-    if (ranked.length === 0) {
-      const text =
-        customCount > 0
-          ? `${customCount} saved lesson${customCount === 1 ? "" : "s"} — pick your own letters to drill, too.`
-          : "Pick your own set of letters to drill, or build up some practice to see your weak letters here.";
-      card.appendChild(el("p", { class: "small muted", text }));
-    } else {
-      card.appendChild(el("p", { class: "small muted", text: "Weak letters:" }));
-      const list = el("p", { class: "mono pool" });
-      list.textContent = ranked.map(([ch, count]) => `${ch} (${count})`).join("   ");
-      card.appendChild(list);
-    }
-
-    const startRow = el("div", { class: "row end" });
-    startRow.appendChild(button("Open  ▶", () => this._lessons(), "btn-block-inline"));
-    card.appendChild(startRow);
+  // One dominant action, always labeled the same way — what changes is the
+  // explanation underneath, generated fresh from the profile's real state
+  // every time this screen loads.
+  _heroCard(rec) {
+    const card = el("div", { class: "card hero-card" });
+    card.appendChild(el("span", { class: "badge", text: "Today's Focus" }));
+    card.appendChild(el("p", { class: "heading", text: rec.title, style: { margin: "8px 0 2px" } }));
+    card.appendChild(el("p", { class: "small muted", text: rec.subtitle }));
+    card.appendChild(
+      button("Start Today's Training  ▶", () => this._startTraining(rec), "btn-accent btn-block")
+    );
     return card;
   }
 
-  _modeCard(title, subtitle, level, onStart) {
-    const card = el("div", { class: "card" });
+  _statsSection(p, rec) {
+    const wrap = el("div", {});
+    const level = rec.mode === "receive" ? p.receive_level : p.send_level;
+    const streak = rec.mode === "receive" ? p.receive_streak : p.send_streak;
+    const target = streakToClear(level);
+    const pool = codes.poolForLevel(level);
 
-    const row = el("div", { class: "row" });
-    row.appendChild(el("span", { class: "heading", text: title }));
-    row.appendChild(el("span", { class: "level-tag", text: `Level ${level}` }));
-    card.appendChild(row);
+    const { attempts, misses } = this._overallAccuracy(p);
+    const accuracyText = attempts > 0 ? `${Math.round(((attempts - misses) / attempts) * 100)}%` : "—";
+    const needsAttention = tierLetters(p).needsWork.length;
 
-    card.appendChild(el("p", { class: "small muted", text: subtitle }));
-    card.appendChild(el("p", { class: "mono pool", text: codes.poolForLevel(level).join(" ") }));
+    const grid = el("div", { class: "stat-grid" });
+    grid.appendChild(this._statTile("Level", String(level)));
+    grid.appendChild(this._statTile("Characters", `${pool.length}/${codes.LEARNING_ORDER.length}`));
+    grid.appendChild(this._statTile("Accuracy", accuracyText));
+    grid.appendChild(this._statTile("Streak", String(streak)));
+    grid.appendChild(this._statTile("Needs Attention", String(needsAttention)));
+    wrap.appendChild(grid);
 
-    const startRow = el("div", { class: "row end" });
-    startRow.appendChild(button("Start  ▶", onStart, "btn-block-inline"));
-    card.appendChild(startRow);
+    const progressWrap = el("div", { class: "progress" });
+    progressWrap.appendChild(el("div", { class: "progress-fill", style: { width: `${Math.min(100, (streak / target) * 100)}%` } }));
+    wrap.appendChild(progressWrap);
+    wrap.appendChild(
+      el("p", { class: "small muted", text: `Level ${level}: ${streak} / ${target} toward your next level` })
+    );
+
+    return wrap;
+  }
+
+  // Encouraging, never punishing — a missed day just isn't counted; there's
+  // no "goal missed" language and the streak simply resumes once practice
+  // does.
+  _todaysPracticeCard(p) {
+    const minutes = todayMs(p) / 60000;
+    const pct = Math.min(100, (minutes / DAILY_GOAL_MINUTES) * 100);
+    const streak = streakDays(p.daily_practice);
+
+    const card = el("div", {});
+    card.appendChild(el("span", { class: "small muted", text: "Today's Practice" }));
+    const progressWrap = el("div", { class: "progress" });
+    progressWrap.appendChild(el("div", { class: "progress-fill", style: { width: `${pct}%` } }));
+    card.appendChild(progressWrap);
+
+    const minutesText = minutes >= 1 ? `${minutes.toFixed(1).replace(/\.0$/, "")} min today` : "Not yet today — any time counts";
+    const streakText = streak > 0 ? `  •  ${streak}-day streak` : "";
+    card.appendChild(el("p", { class: "small muted", text: `${minutesText}${streakText}` }));
 
     return card;
+  }
+
+  _statTile(label, value) {
+    return el("div", { class: "stat-tile" }, [
+      el("span", { class: "stat-value", text: value }),
+      el("span", { class: "stat-label", text: label }),
+    ]);
+  }
+
+  _overallAccuracy(p) {
+    const seen = combinedSeen(p);
+    // "I don't know" (Receive Practice) is neutral — never a mistake — but
+    // it's also not a demonstrated correct answer, so it's excluded from
+    // both sides of the percentage rather than silently counting as
+    // correct. Same exclusion as achievements.js's totalCorrect().
+    const dontKnow = Object.values(p.receive_dont_know || {}).reduce((sum, n) => sum + n, 0);
+    const attempts = Object.values(seen).reduce((sum, n) => sum + n, 0) - dontKnow;
+    const misses = Object.values(p.mistakes || {}).reduce((sum, n) => sum + n, 0);
+    return { attempts, misses };
+  }
+
+  // Secondary, clearly less prominent than the hero card — this is what
+  // keeps a returning/experienced user fast: one click to any mode without
+  // going through the recommendation at all.
+  _quickAccess() {
+    const wrap = el("div", {});
+    wrap.appendChild(el("p", { class: "small muted", text: "Or choose what to practice:" }));
+
+    const row1 = el("div", { class: "button-row" });
+    row1.appendChild(button("Receive Morse", () => this._receive(), "btn-panel"));
+    row1.appendChild(button("Send Morse", () => this._send(), "btn-panel"));
+    wrap.appendChild(row1);
+
+    const row2 = el("div", { class: "button-row" });
+    row2.appendChild(button("Journey", () => this._journey(), "btn-panel"));
+    row2.appendChild(button("Lessons", () => this._lessons(), "btn-panel"));
+    row2.appendChild(button("Listen", () => this._listen(), "btn-panel"));
+    wrap.appendChild(row2);
+
+    const row3 = el("div", { class: "button-row" });
+    row3.appendChild(button("Progress", () => this._scoreboard(), "btn-panel"));
+    row3.appendChild(button("Settings", () => this._settings(), "btn-panel"));
+    wrap.appendChild(row3);
+
+    return wrap;
+  }
+
+  _startTraining(rec) {
+    const options = { returnTo: "mainMenu" };
+    if (rec.lessonChars) {
+      options.lessonChars = rec.lessonChars;
+      options.lessonLabel = rec.title;
+    }
+    if (rec.mode === "receive") {
+      import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
+    } else {
+      import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
+    }
   }
 
   _receive() {
@@ -114,6 +176,10 @@ export class MainMenu {
 
   _lessons() {
     import("./lessons.js").then((m) => this.app.show(m.Lessons));
+  }
+
+  _journey() {
+    import("./journey.js").then((m) => this.app.show(m.Journey));
   }
 
   _listen() {

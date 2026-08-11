@@ -5,13 +5,18 @@
 // decoded and checked against the target.
 
 import * as codes from "./codes.js";
-import { el, button, keyLabel, morseGlyphs } from "./dom.js";
+import { el, button, keyLabel, morseGlyphs, showToast } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
+import { explainCharacter } from "./explainSelection.js";
+import { evaluateAchievements } from "./achievements.js";
+import { recordActivity } from "./dailyPractice.js";
 
 const WRONG_PENALTY = 2;
 const DOT_THRESHOLD_UNITS = 2; // hold >= this many units counts as a dash
 const DECODE_GAP_UNITS = 3;
 const DECODE_GAP_MIN_MS = 600;
+// See the matching constant in receivePractice.js — same reasoning.
+const GETTING_STRONGER_THRESHOLD = 2;
 
 export class SendPractice {
   constructor(root, app, options = {}) {
@@ -23,6 +28,11 @@ export class SendPractice {
     this.lessonChars = options.lessonChars || null;
     this.lessonNumber = options.lessonNumber || null;
     this.lessonLabel = options.lessonLabel || null;
+    // See the matching field in receivePractice.js — same reasoning: which
+    // screen "< Menu"/Esc returns to, explicit rather than inferred from
+    // lessonChars now that Home and Journey also launch practice with
+    // lessonChars set.
+    this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
     this.target = null;
@@ -34,6 +44,7 @@ export class SendPractice {
     this.hintTimer = null;
     this.answered = false;
     this.autoHint = false;
+    this._visitStart = Date.now();
     this._build();
     this._bindKeys();
     this.nextRound();
@@ -43,7 +54,8 @@ export class SendPractice {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this._back()));
+    top.appendChild(button("< Menu", () => this.goBack()));
+    top.appendChild(el("span", { class: "heading", text: "Send Morse" }));
     this.levelLbl = el("span", { class: "level-tag" });
     top.appendChild(this.levelLbl);
     wrap.appendChild(top);
@@ -55,7 +67,17 @@ export class SendPractice {
     this.hintViz = el("div", { class: "hint-viz" });
     wrap.appendChild(this.hintViz);
 
-    this.keyCircle = el("div", { class: "key-circle" });
+    this.teachCard = el("div", { style: { display: "none" } });
+    wrap.appendChild(this.teachCard);
+
+    wrap.appendChild(el("p", { class: "small muted center", text: "Hold to send" }));
+
+    this.keyCircle = el("div", {
+      class: "key-circle",
+      role: "button",
+      tabindex: "0",
+      "aria-label": "Morse key — hold Space, or hold this key, to send",
+    });
     const keyWrap = el("div", { class: "key-wrap" }, [this.keyCircle]);
     wrap.appendChild(keyWrap);
 
@@ -86,7 +108,15 @@ export class SendPractice {
     const hintRow = el("div", { class: "button-row" });
     hintRow.appendChild(button("Hear it  ▶", () => this._playTarget(), "btn-panel"));
     hintRow.appendChild(button("Hint  ?", () => this.showHint(), "btn-panel"));
+    hintRow.appendChild(button("Why this?", () => this._toggleWhy(), "btn-panel"));
     wrap.appendChild(hintRow);
+
+    this.whyText = el("p", {
+      class: "small muted center",
+      style: { display: "none" },
+      "aria-live": "polite",
+    });
+    wrap.appendChild(this.whyText);
 
     this.patternLbl = el("p", { class: "pattern" });
     wrap.appendChild(this.patternLbl);
@@ -117,6 +147,11 @@ export class SendPractice {
         e.preventDefault();
         this._flashKey();
         this.registerSymbol("-");
+      } else if (e.code === "KeyR") {
+        // Only reachable when R isn't already claimed as a custom dot/dash
+        // key above — Replay is a convenience, not a reserved binding.
+        e.preventDefault();
+        this._playTarget();
       }
     };
     this._onKeyUp = (e) => {
@@ -230,24 +265,78 @@ export class SendPractice {
     this.target = pickWeighted(pool, (ch) => charWeight(seen[ch] || 0, mistakes[ch] || 0));
     this.targetLbl.textContent = this.target;
     this.hintViz.innerHTML = "";
+    this.teachCard.innerHTML = "";
+    this.teachCard.style.display = "none";
+    this.whyText.style.display = "none";
     this._renderPattern();
     this.status.textContent = "";
     this.status.className = "heading status center";
 
     const seenCount = seen[this.target] || 0;
+    const isBrandNew = seenCount === 0;
     this.autoHint = shouldAutoHint(seenCount, missStreaks[this.target] || 0);
     seen[this.target] = seenCount + 1;
     this.app.saveProfile();
 
     this._updateMeta();
 
-    if (this.autoHint) {
-      this._setStatus(`New letter — this is ${this.target}`, "good");
+    if (isBrandNew) {
+      // A real teaching moment for a character's very first appearance —
+      // see the matching card in receivePractice.js for the same reasoning.
+      this._setStatus("New character", "good");
+      this.teachCard.style.display = "";
+      this.teachCard.appendChild(this._newCharacterCard(this.target));
+      this.hintTimer = setTimeout(() => {
+        if (!this.answered) this._playTarget();
+      }, 350);
+    } else if (this.autoHint) {
+      this._setStatus(`This is ${this.target}`, "good");
       this._revealHintViz();
       this.hintTimer = setTimeout(() => {
         if (!this.answered) this._playTarget();
       }, 350);
     }
+  }
+
+  // See the matching card in receivePractice.js — same idea, presented for
+  // Send Practice's "see it, then key it" flow.
+  _newCharacterCard(ch) {
+    const card = el("div", { class: "card pop-in" });
+    card.appendChild(el("span", { class: "badge", text: "New Character" }));
+    card.appendChild(el("div", { class: "big-char", text: ch, style: { margin: "6px 0" } }));
+    const glyphRow = el("div", { class: "hint-viz" });
+    glyphRow.appendChild(morseGlyphs(codes.MORSE[ch], "good"));
+    card.appendChild(glyphRow);
+    card.appendChild(
+      el("p", { class: "small muted center", text: codes.rhythmPhrase(codes.MORSE[ch]) })
+    );
+    const row = el("div", { class: "button-row" });
+    row.appendChild(button("Hear it  ▶", () => this._playTarget(), "btn-panel"));
+    row.appendChild(button(`Practice ${ch}`, () => this._practiceThisChar(ch), "btn-accent"));
+    card.appendChild(row);
+    return card;
+  }
+
+  _practiceThisChar(ch) {
+    // Inherits the parent session's returnTo — see the matching method in
+    // receivePractice.js.
+    const options = { lessonChars: [ch], lessonLabel: `Practicing ${ch}`, returnTo: this.returnTo };
+    import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
+  }
+
+  // Always available, non-interrupting — reveals why the current character
+  // came up without ending the round.
+  _toggleWhy() {
+    const showing = this.whyText.style.display !== "none";
+    if (showing) {
+      this.whyText.style.display = "none";
+      return;
+    }
+    const p = this.app.profile;
+    const seen = p.send_seen || {};
+    const mistakes = p.mistakes || {};
+    this.whyText.textContent = explainCharacter(this.target, seen[this.target] || 0, mistakes[this.target] || 0);
+    this.whyText.style.display = "";
   }
 
   decode() {
@@ -259,7 +348,11 @@ export class SendPractice {
     const guess = codes.charFromPattern(this.pattern);
     const correctPattern = codes.MORSE[this.target];
     if (this.pattern === correctPattern) {
+      const priorMissStreak = missStreaks[this.target] || 0;
       missStreaks[this.target] = 0;
+      if (priorMissStreak >= GETTING_STRONGER_THRESHOLD) {
+        showToast(`${this.target} is getting stronger — nice work!`);
+      }
       if (this.lessonChars) {
         this.sessionCorrect += 1;
         this.sessionTotal += 1;
@@ -279,6 +372,7 @@ export class SendPractice {
           this._setStatus(`Correct!  ${this.pattern}`, "good");
         }
       }
+      this._checkAchievements();
       this.app.saveProfile();
       this._updateMeta();
       this.roundTimer = setTimeout(() => this.nextRound(), 900);
@@ -297,15 +391,35 @@ export class SendPractice {
       this._setStatus(`${this.target} is:${decodedNote}`, "bad");
       this.hintViz.innerHTML = "";
       this.hintViz.appendChild(morseGlyphs(correctPattern, "bad"));
+      this._checkAchievements();
       this.app.saveProfile();
       this._updateMeta();
       this.roundTimer = setTimeout(() => this.nextRound(), 1600);
     }
   }
 
+  // Checks for newly-earned achievements, records any into profile.achievements
+  // and toasts them. Does NOT call saveProfile() itself — every caller
+  // already makes its own single save right after, so a round only ever
+  // persists once regardless of whether an achievement also unlocked.
+  _checkAchievements() {
+    const p = this.app.profile;
+    const newly = evaluateAchievements(p);
+    if (newly.length === 0) return;
+    p.achievements = p.achievements || {};
+    const now = new Date().toISOString();
+    for (const a of newly) p.achievements[a.id] = now;
+    for (const a of newly) showToast(`🏅 Achievement unlocked: ${a.label}`);
+  }
+
   _setStatus(text, kind) {
     this.status.textContent = text;
     this.status.className = `heading status center ${kind}`;
+    if (kind === "good") {
+      this.status.classList.remove("pulse-good");
+      void this.status.offsetWidth;
+      this.status.classList.add("pulse-good");
+    }
   }
 
   _updateMeta() {
@@ -319,12 +433,14 @@ export class SendPractice {
     }
   }
 
-  _back() {
-    if (this.lessonChars) {
+  goBack() {
+    if (this.returnTo === "journey") {
+      import("./journey.js").then((m) => this.app.show(m.Journey));
+    } else if (this.returnTo === "lessons") {
       import("./lessons.js").then((m) => this.app.show(m.Lessons));
-      return;
+    } else {
+      import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
     }
-    import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 
   destroy() {
@@ -334,5 +450,10 @@ export class SendPractice {
     document.removeEventListener("keydown", this._onKeyDown);
     document.removeEventListener("keyup", this._onKeyUp);
     this.app.audio.stop();
+    recordActivity(this.app.profile, Date.now() - this._visitStart);
+    // See the matching call in receivePractice.js's destroy() — catches
+    // five_minute_practice_day in the same visit that earns it.
+    this._checkAchievements();
+    this.app.saveProfile();
   }
 }

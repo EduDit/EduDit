@@ -1,16 +1,17 @@
-// Lessons: two ways to drill specific characters without touching level or
-// streak progress — practice here is scored only for the current session.
+// Lessons: three ways to drill specific characters without touching level
+// or streak progress — practice here is scored only for the current
+// session.
 //
-// - Custom Lessons: hand-picked sets of characters, plus one pinned,
-//   auto-generated entry ("Weak Letters") built from whichever letters have
-//   the most recorded mistakes (see rankedMistakes in learning.js) — it
-//   can't be edited or deleted, it just recomputes on every visit.
-// - Unlocked Lessons: every batch of letters introduced so far, same as
-//   before — lets a learner jump back into any of them for review.
+// - Weak Letters: a tiered, auto-updating view (Needs Work / Getting
+//   Better / Strong) built from tierLetters() in weakLetters.js — nothing
+//   to edit or delete, it just recomputes on every visit.
+// - Custom Lessons: hand-picked sets of characters the learner saved.
+// - Unlocked Lessons: every batch of letters introduced so far — lets a
+//   learner jump back into any of them for review.
 
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
-import { rankedMistakes, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
+import { tierLetters } from "./weakLetters.js";
 import { confirmDialog } from "./dialog.js";
 
 export class Lessons {
@@ -25,9 +26,15 @@ export class Lessons {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this._back()));
+    top.appendChild(button("< Menu", () => this.goBack()));
     top.appendChild(el("span", { class: "heading", text: "Lessons" }));
     wrap.appendChild(top);
+
+    wrap.appendChild(el("p", { class: "small muted", text: "Practice specific characters." }));
+    wrap.appendChild(button("View Morse Journey  ▶", () => this._journey(), "btn-panel btn-block"));
+
+    wrap.appendChild(el("div", { class: "divider" }));
+    wrap.appendChild(this._weakLettersSection(p));
 
     wrap.appendChild(el("div", { class: "divider" }));
     wrap.appendChild(el("p", { class: "heading", text: "Custom Lessons" }));
@@ -37,12 +44,10 @@ export class Lessons {
         text: "Pick your own set of letters to drill — good for one stubborn character or a random mix.",
       })
     );
-    const weakCard = this._weakLessonCard(p);
     const customLessons = p.custom_lessons || [];
-    if (!weakCard && customLessons.length === 0) {
+    if (customLessons.length === 0) {
       wrap.appendChild(el("p", { class: "small muted", text: "No custom lessons yet." }));
     } else {
-      if (weakCard) wrap.appendChild(weakCard);
       for (const lesson of customLessons) {
         wrap.appendChild(this._customLessonRow(lesson));
       }
@@ -63,45 +68,73 @@ export class Lessons {
     this.root.appendChild(wrap);
   }
 
-  // The pinned, auto-updating "Weak Letters" entry — recomputed from
-  // rankedMistakes on every visit rather than saved, so it can't drift out
-  // of date and there's nothing to edit or delete. Returns null once there
-  // are no recorded mistakes yet, so it can be omitted entirely.
-  _weakLessonCard(p) {
-    const ranked = rankedMistakes(p.mistakes, WEAK_REVIEW_POOL_SIZE);
-    if (ranked.length === 0) return null;
+  // Auto-updating, tiered ranking — recomputed from tierLetters() on every
+  // visit rather than saved, so it can't drift out of date and there's
+  // nothing to edit or delete.
+  _weakLettersSection(p) {
+    const wrap = el("div", {});
+    wrap.appendChild(el("p", { class: "heading", text: "Weak Letters" }));
 
-    const card = el("div", { class: "card custom-lesson-card auto-lesson-card" });
-    const row = el("div", { class: "row" });
-    const titleWrap = el("div", { class: "row title-wrap" });
-    titleWrap.appendChild(el("span", { class: "heading", text: "Weak Letters" }));
-    titleWrap.appendChild(el("span", { class: "badge", text: "Auto" }));
-    row.appendChild(titleWrap);
-    card.appendChild(row);
-    card.appendChild(
-      el("p", { class: "small muted", text: "Updates itself from whichever letters you miss most often." })
+    const tiers = tierLetters(p);
+    const toReview = [...tiers.needsWork, ...tiers.gettingBetter];
+
+    if (toReview.length === 0) {
+      const hasAnyData = tiers.strong.length > 0;
+      wrap.appendChild(
+        el("p", {
+          class: "small muted",
+          text: hasAnyData
+            ? "Nothing needs work right now — nice and steady. Ready for more characters?"
+            : "Keep practicing and your weak letters will show up here.",
+        })
+      );
+      return wrap;
+    }
+
+    wrap.appendChild(
+      el("p", { class: "small muted", text: "Ranked worst to best — spend a few minutes on the top group." })
+    );
+    if (tiers.needsWork.length) wrap.appendChild(this._tierGroup("Needs Work", tiers.needsWork, "bad"));
+    if (tiers.gettingBetter.length) wrap.appendChild(this._tierGroup("Getting Better", tiers.gettingBetter, ""));
+    if (tiers.strong.length) wrap.appendChild(this._tierGroup("Strong", tiers.strong, "good"));
+
+    const chars = toReview.map((r) => r.ch);
+    wrap.appendChild(
+      button("Practice Weak Letters  ▶", () => this._weakPractice("receive", chars), "btn-accent btn-block")
     );
 
-    const list = el("p", { class: "mono pool" });
-    list.textContent = ranked.map(([ch, count]) => `${ch} (${count})`).join("   ");
-    card.appendChild(list);
+    return wrap;
+  }
 
-    const chars = ranked.map(([ch]) => ch);
-    const startRow = el("div", { class: "button-row" });
-    startRow.appendChild(button("Receive", () => this._weakPractice("receive", chars), "btn-panel"));
-    startRow.appendChild(button("Send", () => this._weakPractice("send", chars), "btn-panel"));
-    card.appendChild(startRow);
-
-    return card;
+  _tierGroup(label, rows, kind) {
+    const group = el("div", { class: "card" });
+    group.appendChild(el("span", { class: "small muted", text: label.toUpperCase() }));
+    const list = el("div", { class: "accuracy-list" });
+    for (const r of rows) {
+      const item = el("div", { class: "accuracy-row" });
+      item.appendChild(el("span", { class: "mono accuracy-char", text: r.ch }));
+      const bar = el("div", { class: "accuracy-bar" });
+      bar.appendChild(el("div", { class: `accuracy-bar-fill ${kind}`.trim(), style: { width: `${r.pct}%` } }));
+      item.appendChild(bar);
+      item.appendChild(el("span", { class: `mono accuracy-pct ${kind}`.trim(), text: `${r.pct}%` }));
+      item.appendChild(el("span", { class: "small muted accuracy-count", text: `${r.attempts - r.misses}/${r.attempts}` }));
+      list.appendChild(item);
+    }
+    group.appendChild(list);
+    return group;
   }
 
   _weakPractice(mode, chars) {
-    const options = { lessonChars: chars, lessonLabel: "Weak point review" };
+    const options = { lessonChars: chars, lessonLabel: "Weak Letters", returnTo: "lessons" };
     if (mode === "receive") {
       import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
     } else {
       import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
     }
+  }
+
+  _journey() {
+    import("./journey.js").then((m) => this.app.show(m.Journey));
   }
 
   _customLessonRow(lesson) {
@@ -125,7 +158,7 @@ export class Lessons {
   }
 
   _practiceCustom(mode, lesson) {
-    const options = { lessonChars: lesson.chars, lessonLabel: lesson.name };
+    const options = { lessonChars: lesson.chars, lessonLabel: lesson.name, returnTo: "lessons" };
     if (mode === "receive") {
       import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
     } else {
@@ -181,7 +214,7 @@ export class Lessons {
   }
 
   _practice(mode, lessonNumber, chars) {
-    const options = { lessonChars: chars, lessonNumber };
+    const options = { lessonChars: chars, lessonNumber, returnTo: "lessons" };
     if (mode === "receive") {
       import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
     } else {
@@ -189,7 +222,7 @@ export class Lessons {
     }
   }
 
-  _back() {
+  goBack() {
     import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 

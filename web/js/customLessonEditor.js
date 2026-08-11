@@ -26,7 +26,7 @@ export class CustomLessonEditor {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Lessons", () => this._back()));
+    top.appendChild(button("< Lessons", () => this.goBack()));
     top.appendChild(el("span", { class: "heading", text: this.existing ? "Edit Lesson" : "New Lesson" }));
     wrap.appendChild(top);
 
@@ -105,14 +105,14 @@ export class CustomLessonEditor {
       p.custom_lessons.push({ id: this._makeId(), name, chars });
     }
     this.app.saveProfile();
-    this._back();
+    this.goBack();
   }
 
   _makeId() {
     return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  _back() {
+  goBack() {
     import("./lessons.js").then((m) => this.app.show(m.Lessons));
   }
 

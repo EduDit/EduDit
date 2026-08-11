@@ -53,6 +53,28 @@ export function keyLabel(code) {
   return code;
 }
 
+// Non-blocking, auto-dismissing notice — for occasional adaptive-learning
+// asides and achievement unlocks. Distinct from dialog.js's blocking modal:
+// never steals focus, never requires a response. Multiple toasts stack.
+let _toastWrap = null;
+export function showToast(text, { duration = 4500 } = {}) {
+  if (!_toastWrap) {
+    _toastWrap = el("div", { class: "toast-wrap" });
+    document.body.appendChild(_toastWrap);
+  }
+  const toast = el("div", { class: "toast", role: "status", "aria-live": "polite", text });
+  _toastWrap.appendChild(toast);
+  let removed = false;
+  const remove = () => {
+    if (removed) return;
+    removed = true;
+    toast.classList.add("toast-out");
+    setTimeout(() => toast.remove(), 200);
+  };
+  setTimeout(remove, duration);
+  return remove;
+}
+
 // Renders a dot/dash pattern (e.g. ".-") as a row of round/oblong glyphs
 // instead of punctuation, so it reads as Morse at a glance. Pass kind "good"
 // to render it in the "this is the answer" color instead of the default.

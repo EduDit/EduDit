@@ -49,12 +49,24 @@ export function defaultProfile() {
     receive_seen: {},
     receive_miss_streak: {},
     receive_mistakes: {},
+    // { char: count } — "I don't know" uses on Receive Practice. Neutral by
+    // design (never a mistake, never a streak penalty), but still needs to
+    // be excluded from accuracy/achievement math or it would inflate
+    // "correct" — see achievements.js and mainMenu.js's _overallAccuracy.
+    receive_dont_know: {},
     send_seen: {},
     send_miss_streak: {},
     send_mistakes: {},
     mistakes: {},
     custom_lessons: [],
     pin: null,
+    // Set true after the first-run intro is shown or skipped, so it only
+    // ever appears once per profile.
+    onboarded: false,
+    // { achievementId: unlockedAtISOString } — see achievements.js.
+    achievements: {},
+    // { "YYYY-MM-DD": activeMsPracticedThatDay } — see dailyPractice.js.
+    daily_practice: {},
     settings: {
       wpm: 15,
       freq: 600,
@@ -66,6 +78,10 @@ export function defaultProfile() {
       listenRepeatGapUnits: 6,
       listenGapUnits: 7,
       listenSpeakLetters: false,
+      // null | "new" | "some" | "experienced" — asked once during
+      // onboarding, purely informational (copy/emphasis only, never the
+      // learning order or adaptive weighting).
+      priorExperience: null,
     },
   };
 }

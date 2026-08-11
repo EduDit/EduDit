@@ -8,6 +8,7 @@ import * as storage from "./storage.js";
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
 import { accuracyRows, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
+import { ACHIEVEMENTS } from "./achievements.js";
 
 export class Scoreboard {
   constructor(root, app) {
@@ -22,9 +23,13 @@ export class Scoreboard {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this._back()));
-    top.appendChild(el("span", { class: "heading", text: "Scoreboard" }));
+    top.appendChild(button("< Menu", () => this.goBack()));
+    top.appendChild(el("span", { class: "heading", text: "Progress" }));
     wrap.appendChild(top);
+
+    wrap.appendChild(
+      el("p", { class: "small muted", text: "See what you've mastered and what needs work." })
+    );
 
     const names = storage.listProfiles();
     if (names.length === 0) {
@@ -42,11 +47,40 @@ export class Scoreboard {
 
     if (!names.includes(this.selectedName)) this.selectedName = rows[0].name;
 
+    const selected = rows.find((r) => r.name === this.selectedName);
     wrap.appendChild(this._table(rows));
     wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(this._detail(rows.find((r) => r.name === this.selectedName)));
+    wrap.appendChild(this._detail(selected));
+    wrap.appendChild(el("div", { class: "divider" }));
+    wrap.appendChild(this._achievementsSection(selected));
 
     this.root.appendChild(wrap);
+  }
+
+  // Kept secondary — a small section here, not a Home-screen feature.
+  _achievementsSection(entry) {
+    const earned = entry.profile.achievements || {};
+    const earnedList = ACHIEVEMENTS.filter((a) => earned[a.id]);
+
+    const wrap = el("div", {});
+    wrap.appendChild(el("p", { class: "heading", text: "Achievements" }));
+    wrap.appendChild(
+      el("p", { class: "small muted", text: `${earnedList.length} / ${ACHIEVEMENTS.length} earned` })
+    );
+
+    if (earnedList.length === 0) {
+      wrap.appendChild(
+        el("p", { class: "small muted", text: "Keep practicing — your first achievement is closer than you think." })
+      );
+      return wrap;
+    }
+
+    const badgeRow = el("div", { class: "badge-row" });
+    for (const a of earnedList) {
+      badgeRow.appendChild(el("span", { class: "badge", text: `🏅 ${a.label}` }));
+    }
+    wrap.appendChild(badgeRow);
+    return wrap;
   }
 
   _table(rows) {
@@ -133,8 +167,11 @@ export class Scoreboard {
   }
 
   _tabButton(label, tab) {
-    const cls = `tab-btn${this.tab === tab ? " tab-btn-active" : ""}`;
-    return button(label, () => this._setTab(tab), cls);
+    const active = this.tab === tab;
+    const cls = `tab-btn${active ? " tab-btn-active" : ""}`;
+    const btn = button(label, () => this._setTab(tab), cls);
+    btn.setAttribute("aria-pressed", String(active));
+    return btn;
   }
 
   _accuracyList(rows) {
@@ -154,7 +191,7 @@ export class Scoreboard {
   }
 
   _practiceWeak(chars) {
-    const options = { lessonChars: chars, lessonLabel: "Weak letters" };
+    const options = { lessonChars: chars, lessonLabel: "Weak letters", returnTo: "lessons" };
     if (this.tab === "receive") {
       import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
     } else {
@@ -166,7 +203,7 @@ export class Scoreboard {
     import("./lessons.js").then((m) => this.app.show(m.Lessons));
   }
 
-  _back() {
+  goBack() {
     import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 

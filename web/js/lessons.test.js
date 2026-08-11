@@ -43,21 +43,42 @@ test("each rendered lesson lists exactly its own CHARS_PER_LEVEL letters", () =>
   });
 });
 
-test("no auto Weak Letters card shows when nothing has been missed yet", () => {
+test("no Weak Letters tiers or Practice button show when nothing has been attempted yet", () => {
   const root = document.createElement("div");
   new Lessons(root, fakeApp(1, 1, { mistakes: {} }));
-  const card = root.querySelector(".auto-lesson-card");
-  assert(!card, "expected no .auto-lesson-card");
+  assertEqual(root.querySelectorAll(".accuracy-list").length, 0);
+  const practiceBtn = [...root.querySelectorAll("button")].find((b) => b.textContent.includes("Practice Weak Letters"));
+  assert(!practiceBtn, "expected no 'Practice Weak Letters' button");
 });
 
-test("Weak Letters ranks missed letters worst-first and offers Receive/Send", () => {
+test("Weak Letters groups characters into Needs Work / Getting Better / Strong tiers", () => {
   const root = document.createElement("div");
-  new Lessons(root, fakeApp(1, 1, { mistakes: { A: 1, B: 5 } }));
-  const card = root.querySelector(".auto-lesson-card");
-  assert(card, "expected a .auto-lesson-card");
-  assertEqual(card.querySelector(".pool").textContent, "B (5)   A (1)");
-  const buttons = [...card.querySelectorAll("button")].map((b) => b.textContent);
-  assertEqual(buttons, ["Receive", "Send"]);
+  new Lessons(
+    root,
+    fakeApp(1, 1, {
+      mistakes: { B: 7, F: 3 },
+      receive_seen: { B: 5, F: 5, E: 8 },
+      send_seen: { B: 5, F: 5, E: 7 },
+    })
+  );
+  const tierLabels = [...root.querySelectorAll(".accuracy-list")]
+    .map((list) => list.previousElementSibling.textContent);
+  assertEqual(tierLabels, ["NEEDS WORK", "GETTING BETTER", "STRONG"]);
+
+  const needsWork = root.querySelectorAll(".accuracy-list")[0];
+  assertEqual(needsWork.querySelector(".accuracy-char").textContent, "B");
+  assertEqual(needsWork.querySelector(".accuracy-pct").textContent, "30%");
+
+  const gettingBetter = root.querySelectorAll(".accuracy-list")[1];
+  assertEqual(gettingBetter.querySelector(".accuracy-char").textContent, "F");
+  assertEqual(gettingBetter.querySelector(".accuracy-pct").textContent, "70%");
+
+  const strong = root.querySelectorAll(".accuracy-list")[2];
+  assertEqual(strong.querySelector(".accuracy-char").textContent, "E");
+
+  // Exactly one action — no per-tier Receive/Send pair like the old design.
+  const practiceBtn = [...root.querySelectorAll("button")].find((b) => b.textContent.includes("Practice Weak Letters"));
+  assert(practiceBtn, "expected a single 'Practice Weak Letters' button");
 });
 
 test("with no custom lessons and no mistakes, only the 'New custom lesson' button shows", () => {

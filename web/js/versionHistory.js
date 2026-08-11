@@ -17,7 +17,7 @@ export class VersionHistory {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Settings", () => this._back()));
+    top.appendChild(button("< Settings", () => this.goBack()));
     top.appendChild(el("span", { class: "heading", text: "Version History" }));
     wrap.appendChild(top);
 
@@ -110,7 +110,7 @@ export class VersionHistory {
     return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
-  _back() {
+  goBack() {
     import("./settings.js").then((m) => this.app.show(m.Settings));
   }
 

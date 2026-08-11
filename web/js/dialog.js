@@ -16,8 +16,12 @@ function open(message, buttons) {
     };
 
     const onKey = (e) => {
-      if (e.key === "Escape") finish(false);
-      else if (e.key === "Enter") finish(buttons[buttons.length - 1].value);
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        finish(false);
+      } else if (e.key === "Enter") {
+        finish(buttons[buttons.length - 1].value);
+      }
     };
 
     const row = el("div", { class: "button-row" });

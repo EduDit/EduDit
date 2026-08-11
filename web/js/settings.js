@@ -3,6 +3,7 @@
 import * as storage from "./storage.js";
 import { el, button, keyLabel } from "./dom.js";
 import { confirmDialog, alertDialog } from "./dialog.js";
+import { showShortcutsHelp } from "./shortcutsHelp.js";
 import { APP_VERSION } from "./version.js";
 
 export class Settings {
@@ -16,7 +17,7 @@ export class Settings {
     const wrap = el("div", { class: "screen" });
 
     const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this._back()));
+    top.appendChild(button("< Menu", () => this.goBack()));
     top.appendChild(el("span", { class: "heading", text: "Settings" }));
     wrap.appendChild(top);
 
@@ -31,6 +32,9 @@ export class Settings {
     wrap.appendChild(this._sendKeysSection());
     wrap.appendChild(this._pinSection());
 
+    wrap.appendChild(
+      button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
+    );
     wrap.appendChild(button("Test tone  ♪", () => this._testTone(), "btn-block btn-accent"));
     wrap.appendChild(
       button("Reset this profile's progress", () => this._reset(), "btn-block btn-danger")
@@ -78,6 +82,7 @@ export class Settings {
       const tab = el("button", {
         class: `tab-btn ${value === current ? "tab-btn-active" : ""}`.trim(),
         text: label,
+        "aria-pressed": String(value === current),
         onclick: () => this._onTheme(value),
       });
       tabs.appendChild(tab);
@@ -311,7 +316,7 @@ export class Settings {
     import("./versionHistory.js").then((m) => this.app.show(m.VersionHistory));
   }
 
-  _back() {
+  goBack() {
     import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 
