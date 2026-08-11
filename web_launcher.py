@@ -7,6 +7,7 @@ target machine needs no Python install of its own.
 import http.server
 import json
 import os
+import re
 import shutil
 import socketserver
 import sys
@@ -20,15 +21,34 @@ PORT = 8000
 REPO = "Screen4639/DitDash"
 
 
+def _read_version(web_root):
+    try:
+        with open(os.path.join(web_root, "js", "version.js"), encoding="utf-8") as f:
+            m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', f.read())
+    except OSError:
+        return []
+    return [int(n) for n in re.findall(r"\d+", m.group(1))] if m else []
+
+
 def _web_dir():
     if getattr(sys, "frozen", False):
         # --onefile re-extracts bundled data to a fresh temp folder on every
         # launch, so a self-update written there wouldn't survive a
         # relaunch. Keep a persistent copy next to the exe instead, seeded
         # from the bundled copy the first time the app runs.
+        bundled = os.path.join(sys._MEIPASS, "web")
         persistent = os.path.join(os.path.dirname(sys.executable), "DitDashWeb_app")
         if not os.path.isdir(persistent):
-            shutil.copytree(os.path.join(sys._MEIPASS, "web"), persistent)
+            shutil.copytree(bundled, persistent)
+        elif _read_version(bundled) > _read_version(persistent):
+            # This exe was swapped for a newer build since the persistent
+            # copy was seeded (e.g. a fresh release replacing an older
+            # DitDashWeb.exe left in place) — reseed so js modules can't end
+            # up mismatched. Only reseed forward: an in-app self-update can
+            # leave the persistent copy newer than this exe's bundle, and
+            # that must not be clobbered.
+            shutil.rmtree(persistent)
+            shutil.copytree(bundled, persistent)
         return persistent
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
