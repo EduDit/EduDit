@@ -5,12 +5,13 @@
 // decoded and checked against the target.
 
 import * as codes from "./codes.js";
-import { el, button, keyLabel, morseGlyphs, showToast } from "./dom.js";
+import { el, button, keyLabel, morseGlyphs, showToast, pageHeader } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
 import { explainCharacter } from "./explainSelection.js";
 import { evaluateAchievements } from "./achievements.js";
 import { recordActivity } from "./dailyPractice.js";
 import { newCharacterCard } from "./teachingCard.js";
+import { calculateResponseScore, updateFluencyEma } from "./scoring.js";
 
 // See the matching constant in receivePractice.js — same reasoning.
 const SUMMARY_MIN_ROUNDS = 3;
@@ -23,6 +24,8 @@ const DECODE_GAP_MIN_MS = 600;
 const GETTING_STRONGER_THRESHOLD = 2;
 
 export class SendPractice {
+  static navId = "practice";
+
   constructor(root, app, options = {}) {
     this.root = root;
     this.app = app;
@@ -33,16 +36,20 @@ export class SendPractice {
     this.lessonNumber = options.lessonNumber || null;
     this.lessonLabel = options.lessonLabel || null;
     // See the matching field in receivePractice.js — same reasoning: which
-    // screen "< Menu"/Esc returns to, explicit rather than inferred from
+    // screen Back/Esc returns to, explicit rather than inferred from
     // lessonChars now that Home and Journey also launch practice with
     // lessonChars set.
     this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
+    // See the matching field in receivePractice.js — same reasoning.
+    this.embedded = !!options.embedded;
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
     // Tracked in every round (not just lesson-mode) so Session Summary has
     // something real to show regardless of how the session ends.
     this.sessionChars = new Set();
     this.sessionMisses = {};
+    // See the matching field in receivePractice.js — same reasoning.
+    this.sessionScores = [];
     this.target = null;
     this.pattern = "";
     this.keyDown = false;
@@ -52,21 +59,33 @@ export class SendPractice {
     this.hintTimer = null;
     this.answered = false;
     this.autoHint = false;
+    // Timing state is fully reset at the top of every nextRound() — see
+    // there — so a value can never leak from one round into the next.
+    this._roundScoreable = false;
+    this._recognitionStartMs = null;
+    this._firstSymbolTimeMs = null;
+    this._timingInterrupted = false;
     this._visitStart = Date.now();
     this._build();
     this._bindKeys();
+    this._bindVisibility();
     this.nextRound();
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: this.embedded ? "screen" : "screen view-focused" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Send Morse" }));
-    this.levelLbl = el("span", { class: "level-tag" });
-    top.appendChild(this.levelLbl);
-    wrap.appendChild(top);
+    if (!this.embedded) {
+      wrap.appendChild(
+        pageHeader({
+          eyebrow: "Practice",
+          title: "Send",
+          actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+        })
+      );
+    }
+    this.levelLbl = el("p", { class: "level-tag", style: { margin: "0 0 10px" } });
+    wrap.appendChild(this.levelLbl);
 
     wrap.appendChild(el("p", { class: "small muted center", text: "Send this character" }));
     this.targetLbl = el("div", { class: "big-char" });
@@ -172,6 +191,14 @@ export class SendPractice {
     document.addEventListener("keyup", this._onKeyUp);
   }
 
+  // See the matching method in receivePractice.js — same reasoning.
+  _bindVisibility() {
+    this._onVisibilityChange = () => {
+      if (document.hidden) this._timingInterrupted = true;
+    };
+    document.addEventListener("visibilitychange", this._onVisibilityChange);
+  }
+
   _updateKeyBindHint() {
     const s = this.app.profile.settings;
     let text = "Hold SPACE or the circle — short = dot, long = dash";
@@ -187,6 +214,9 @@ export class SendPractice {
   // on-demand Hint button and for auto-demonstrating new/struggling letters.
   showHint() {
     if (this.answered) return;
+    // Requesting a hint reveals the answer mid-round, same as an auto-hint
+    // round — see the matching comment in receivePractice.js.
+    this._roundScoreable = false;
     this._revealHintViz();
   }
 
@@ -222,11 +252,22 @@ export class SendPractice {
     if (this.answered || this.keyDown) return;
     this.keyDown = true;
     this.pressTime = performance.now();
+    this._markFirstResponse();
     if (this.decodeTimer) {
       clearTimeout(this.decodeTimer);
       this.decodeTimer = null;
     }
     this.keyCircle.classList.add("active");
+  }
+
+  // Marks the moment the learner first physically responds to the prompt —
+  // the hold-to-send path (Space/mouse/touch) calls this from onPress(),
+  // the dedicated dot/dash keys call it from registerSymbol() below (there
+  // is no separate press/release for those, the tap itself is the
+  // response). Only the *first* mark in a round counts — see nextRound()
+  // for the per-round reset that makes that safe to check with `== null`.
+  _markFirstResponse() {
+    if (this._firstSymbolTimeMs == null) this._firstSymbolTimeMs = performance.now();
   }
 
   onRelease() {
@@ -243,6 +284,7 @@ export class SendPractice {
   // the decode. Shared by spacebar release and the dedicated dot/dash keys.
   registerSymbol(symbol) {
     if (this.answered) return;
+    this._markFirstResponse();
     if (this.decodeTimer) {
       clearTimeout(this.decodeTimer);
       this.decodeTimer = null;
@@ -261,6 +303,13 @@ export class SendPractice {
   nextRound() {
     this.answered = false;
     this.pattern = "";
+    // Every round's timer starts clean — reset unconditionally, before the
+    // auto-hint/brand-new decision below, so a value can never leak from a
+    // previous round (including one abandoned via goBack()/Esc mid-round).
+    this._roundScoreable = false;
+    this._recognitionStartMs = null;
+    this._firstSymbolTimeMs = null;
+    this._timingInterrupted = false;
     if (this.hintTimer) {
       clearTimeout(this.hintTimer);
       this.hintTimer = null;
@@ -283,6 +332,12 @@ export class SendPractice {
     const seenCount = seen[this.target] || 0;
     const isBrandNew = seenCount === 0;
     this.autoHint = shouldAutoHint(seenCount, missStreaks[this.target] || 0);
+    // Only a genuine "see it, then key it blind" round is scoreable — see
+    // the matching comment in receivePractice.js. Send's prompt is visual
+    // and available immediately, so the clock starts right here rather than
+    // waiting on any async playback.
+    this._roundScoreable = !isBrandNew && !this.autoHint;
+    if (this._roundScoreable) this._recognitionStartMs = performance.now();
     seen[this.target] = seenCount + 1;
     this.app.saveProfile();
 
@@ -344,8 +399,33 @@ export class SendPractice {
     const correctPattern = codes.MORSE[this.target];
     this.sessionTotal += 1;
     this.sessionChars.add(this.target);
-    if (this.pattern === correctPattern) {
+
+    // Response-time scoring — stops at the *first keystroke* of the round
+    // (_firstSymbolTimeMs), not here at decode(), which only fires after a
+    // fixed post-keying gap (DECODE_GAP_UNITS/DECODE_GAP_MIN_MS) whose sole
+    // purpose is letting the app detect that keying paused. That gap is
+    // dead time the training system imposes, not part of the learner's
+    // response, so it's excluded from the measured interval.
+    const responseMs =
+      this._roundScoreable &&
+      this._recognitionStartMs != null &&
+      this._firstSymbolTimeMs != null &&
+      !this._timingInterrupted
+        ? this._firstSymbolTimeMs - this._recognitionStartMs
+        : null;
+    const correct = this.pattern === correctPattern;
+    if (responseMs != null) {
+      this.sessionScores.push(calculateResponseScore({ correct, responseMs }));
+    }
+
+    if (correct) {
       this.sessionCorrect += 1;
+      if (responseMs != null) {
+        // See the matching comment in receivePractice.js — fluency only
+        // updates on a correct, scored round.
+        const fluencyMap = p.send_fluency_ms || (p.send_fluency_ms = {});
+        fluencyMap[this.target] = updateFluencyEma(fluencyMap[this.target] ?? null, responseMs);
+      }
       const priorMissStreak = missStreaks[this.target] || 0;
       missStreaks[this.target] = 0;
       if (priorMissStreak >= GETTING_STRONGER_THRESHOLD) {
@@ -470,6 +550,7 @@ export class SendPractice {
       total: this.sessionTotal,
       chars: this.sessionChars,
       misses: this.sessionMisses,
+      scores: this.sessionScores,
       leveledUp: false,
       unlockedChars: [],
       ...extra,
@@ -483,6 +564,7 @@ export class SendPractice {
     if (this.hintTimer) clearTimeout(this.hintTimer);
     document.removeEventListener("keydown", this._onKeyDown);
     document.removeEventListener("keyup", this._onKeyUp);
+    document.removeEventListener("visibilitychange", this._onVisibilityChange);
     this.app.audio.stop();
     recordActivity(this.app.profile, Date.now() - this._visitStart);
     // See the matching call in receivePractice.js's destroy() — catches

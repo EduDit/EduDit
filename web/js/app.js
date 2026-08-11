@@ -5,6 +5,7 @@ import { AudioPlayer } from "./audio.js";
 import * as storage from "./storage.js";
 import { ProfileSelect } from "./profileSelect.js";
 import { checkForUpdate, showUpdateBanner } from "./updateCheck.js";
+import { AppShell } from "./shell.js";
 
 class App {
   constructor(root) {
@@ -13,6 +14,7 @@ class App {
     this.profileName = null;
     this.profile = null;
     this._view = null;
+    this.shell = null;
 
     // Prime the AudioContext on the first tap/click/keypress anywhere, so a
     // Bluetooth headset has already woken up by the time a real tone plays.
@@ -49,12 +51,36 @@ class App {
     });
   }
 
+  // Screens opt into the persistent app shell (top nav / bottom tab bar) by
+  // default. A screen sets a static `chromeless = true` (Profile Select,
+  // Onboarding — pre-profile states with their own centered layout) to
+  // render directly into #app instead. A screen sets a static `navId`
+  // (e.g. `MainMenu.navId = "home"`) to highlight itself in the shell's nav;
+  // screens without one (Settings, Session Summary, …) just leave every nav
+  // item unhighlighted, which is correct for a secondary/contextual screen.
   show(ViewClass, options) {
     if (this._view && typeof this._view.destroy === "function") {
       this._view.destroy();
     }
-    this.root.innerHTML = "";
-    this._view = new ViewClass(this.root, this, options);
+
+    if (ViewClass.chromeless) {
+      if (this.shell) {
+        this.shell.destroy();
+        this.shell = null;
+      }
+      this.root.innerHTML = "";
+      this._view = new ViewClass(this.root, this, options);
+      return;
+    }
+
+    if (!this.shell) {
+      this.root.innerHTML = "";
+      this.shell = new AppShell(this.root, this);
+    }
+    this.shell.contentEl.innerHTML = "";
+    this._view = new ViewClass(this.shell.contentEl, this, options);
+    this.shell.setActive(ViewClass.navId || null);
+    this.shell.refreshProfile();
   }
 
   loadProfile(name) {

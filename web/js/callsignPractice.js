@@ -6,16 +6,20 @@
 // clearly as an optional stretch mode rather than gated progress.
 
 import * as codes from "./codes.js";
-import { el, button } from "./dom.js";
+import { el, button, pageHeader } from "./dom.js";
 import { buildTimeline } from "./farnsworth.js";
 import { randomCallsign, randomExchange } from "./callsigns.js";
 import { recordActivity } from "./dailyPractice.js";
 
 export class CallsignPractice {
+  static navId = "practice";
+
   constructor(root, app, options = {}) {
     this.root = root;
     this.app = app;
     this.returnTo = options.returnTo || "mainMenu";
+    // See the matching field in receivePractice.js — same reasoning.
+    this.embedded = !!options.embedded;
     this.contentType = "callsign"; // "callsign" | "exchange"
     this.target = null;
     this.answered = false;
@@ -28,19 +32,23 @@ export class CallsignPractice {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: this.embedded ? "screen" : "screen view-focused" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Callsign Practice" }));
-    wrap.appendChild(top);
-
-    wrap.appendChild(
-      el("p", {
-        class: "small muted",
-        text: "Practice copying callsigns and short exchanges like you would hear on the air.",
-      })
-    );
+    if (!this.embedded) {
+      wrap.appendChild(
+        pageHeader({
+          eyebrow: "Practice",
+          title: "Callsigns",
+          actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+        })
+      );
+      wrap.appendChild(
+        el("p", {
+          class: "small muted",
+          text: "Practice copying callsigns and short exchanges like you would hear on the air.",
+        })
+      );
+    }
     wrap.appendChild(
       el("p", {
         class: "small muted",

@@ -1,204 +1,163 @@
-// Settings: per-profile WPM and tone pitch, light PIN, and a progress reset.
+// Settings: organized into Practice / Audio / Appearance / Data tabs
+// instead of one long scroll, with the WPM/Farnsworth/tone/volume sliders
+// collapsed behind an "Adjust" toggle (progressive disclosure) rather than
+// all shown at once. About stays visible under every tab, not tabbed itself.
 
 import * as storage from "./storage.js";
-import { el, button, keyLabel, attachArrowNav } from "./dom.js";
+import { el, button, keyLabel, attachArrowNav, tabBar, pageHeader } from "./dom.js";
 import { confirmDialog, alertDialog } from "./dialog.js";
 import { showShortcutsHelp } from "./shortcutsHelp.js";
 import { APP_VERSION } from "./version.js";
 import { serializeProfile, parseImportedProfile } from "./backup.js";
 
+const TABS = [
+  { id: "practice", label: "Practice" },
+  { id: "audio", label: "Audio" },
+  { id: "appearance", label: "Appearance" },
+  { id: "data", label: "Data" },
+];
+
 export class Settings {
   constructor(root, app) {
     this.root = root;
     this.app = app;
+    this.tab = "practice";
+    // Which collapsed sliders are currently expanded — see _collapsible().
+    this._expanded = new Set();
     this._build();
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-standard" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Settings" }));
-    wrap.appendChild(top);
-
-    const s = this.app.profile.settings;
-
-    wrap.appendChild(this._sectionTitle("Audio"));
-    wrap.appendChild(this._slider("Character Speed (WPM)", s.wpm, 5, 35, (v) => this._onWpm(v)));
-    wrap.appendChild(this._farnsworthSection());
-    wrap.appendChild(this._slider("Tone pitch (Hz)", s.freq, 300, 1000, (v) => this._onFreq(v)));
-    wrap.appendChild(this._slider("Volume", s.volume ?? 70, 10, 100, (v) => this._onVolume(v)));
-    wrap.appendChild(button("Test tone  ♪", () => this._testTone(), "btn-block btn-accent"));
-
-    wrap.appendChild(this._sectionTitle("Appearance & Behavior"));
-    wrap.appendChild(this._themeSection());
-    wrap.appendChild(this._keepAwakeSection());
-
-    wrap.appendChild(this._sectionTitle("Controls"));
-    wrap.appendChild(this._sendKeysSection());
     wrap.appendChild(
-      button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
+      pageHeader({
+        title: "Settings",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
     );
 
-    wrap.appendChild(this._sectionTitle("Profile & Data"));
-    wrap.appendChild(this._pinSection());
-    wrap.appendChild(this._backupSection());
-    wrap.appendChild(
-      button("Reset this profile's progress", () => this._reset(), "btn-block btn-danger")
-    );
+    wrap.appendChild(tabBar(TABS, this.tab, (id) => this._setTab(id)));
 
-    wrap.appendChild(this._sectionTitle("About"));
+    const panels = {
+      practice: () => this._practicePanel(),
+      audio: () => this._audioPanel(),
+      appearance: () => this._appearancePanel(),
+      data: () => this._dataPanel(),
+    };
+    wrap.appendChild(panels[this.tab]());
+
+    wrap.appendChild(el("div", { class: "divider" }));
     wrap.appendChild(this._versionSection());
 
     this.root.appendChild(wrap);
   }
 
-  _sectionTitle(text) {
-    return el("div", { class: "settings-section-title", text });
+  _setTab(id) {
+    if (id === this.tab) return;
+    this.tab = id;
+    this._rebuild();
   }
 
-  _slider(label, value, lo, hi, onInput) {
+  // A collapsed "Label · value [Adjust]" row that expands into whatever
+  // `renderExpanded()` returns — the progressive-disclosure pattern shared
+  // by every slider on this screen, so a first-time visitor sees one
+  // current value per setting instead of five sliders at once.
+  // `renderExpanded(valueLbl)` gets the collapsed row's own value label, so
+  // its slider can update it directly while dragging (matching the
+  // original sliders' live feedback) instead of needing a full _rebuild()
+  // on every input event.
+  _collapsible(key, label, valueText, renderExpanded) {
+    const expanded = this._expanded.has(key);
     const frame = el("div", { class: "slider-frame" });
+
     const row = el("div", { class: "row" });
     row.appendChild(el("span", { text: label }));
-    const valueLbl = el("span", { class: "good", text: String(value) });
-    row.appendChild(valueLbl);
+    const right = el("div", { style: { display: "flex", gap: "10px", alignItems: "center" } });
+    const valueLbl = el("span", { class: "good", text: valueText });
+    right.appendChild(valueLbl);
+    right.appendChild(
+      button(expanded ? "Done" : "Adjust", () => this._toggleExpand(key), "btn-panel btn-block-inline")
+    );
+    row.appendChild(right);
     frame.appendChild(row);
 
-    const input = el("input", { type: "range", min: String(lo), max: String(hi), value: String(value) });
-    input.addEventListener("input", () => {
-      valueLbl.textContent = input.value;
-      onInput(Number(input.value));
-    });
-    frame.appendChild(input);
+    if (expanded) frame.appendChild(renderExpanded(valueLbl));
     return frame;
+  }
+
+  _toggleExpand(key) {
+    if (this._expanded.has(key)) this._expanded.delete(key);
+    else this._expanded.add(key);
+    this._rebuild();
+  }
+
+  // ---- Practice tab ----
+
+  _practicePanel() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+    wrap.appendChild(
+      this._collapsible("wpm", "Character Speed", `${s.wpm} WPM`, (valueLbl) => this._wpmSlider(valueLbl))
+    );
+    wrap.appendChild(this._farnsworthCollapsible());
+    wrap.appendChild(this._sendKeysSection());
+    wrap.appendChild(
+      button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
+    );
+    return wrap;
+  }
+
+  _wpmSlider(valueLbl) {
+    const s = this.app.profile.settings;
+    const input = el("input", { type: "range", min: "5", max: "35", value: String(s.wpm) });
+    input.addEventListener("input", () => {
+      valueLbl.textContent = `${input.value} WPM`;
+      this._onWpmLive(Number(input.value));
+    });
+    return input;
   }
 
   // Farnsworth spacing: slows the gaps between characters/words while
-  // dot/dash timing stays at full Character Speed — see farnsworth.js.
-  // Off by default (farnsworthWpm: null). Dragging up to (or past)
-  // Character Speed is treated as "off" rather than needing the slider's
-  // own max to track the Character Speed slider live.
-  _farnsworthSection() {
+  // dot/dash timing stays at full Character Speed — see farnsworth.js. Off
+  // by default (farnsworthWpm: null). Dragging up to (or past) Character
+  // Speed is treated as "off" rather than needing the slider's own max to
+  // track the Character Speed slider live.
+  _farnsworthCollapsible() {
     const s = this.app.profile.settings;
     const isOff = !s.farnsworthWpm;
     const value = s.farnsworthWpm || s.wpm;
+    const valueText = isOff ? `${value} WPM (same as character speed)` : `${value} WPM`;
 
-    const frame = el("div", { class: "slider-frame" });
-    const row = el("div", { class: "row" });
-    row.appendChild(el("span", { text: "Spacing Speed (WPM)" }));
-    const valueLbl = el("span", {
-      class: "good",
-      text: isOff ? `${value} (same as character speed)` : String(value),
-    });
-    row.appendChild(valueLbl);
-    frame.appendChild(row);
-    frame.appendChild(
-      el("p", {
-        class: "small muted",
-        text:
-          "Characters are sent at your Character Speed above, while the gaps between " +
-          "characters and words can be slowed down separately to make listening easier.",
-      })
-    );
-
-    const input = el("input", { type: "range", min: "5", max: "35", value: String(value) });
-    input.addEventListener("input", () => {
-      const v = Number(input.value);
-      const off = v >= s.wpm;
-      valueLbl.textContent = off ? `${v} (same as character speed)` : String(v);
-      this._onFarnsworth(off ? null : v);
-    });
-    frame.appendChild(input);
-
-    if (!isOff) {
+    return this._collapsible("farnsworth", "Spacing Speed", valueText, (valueLbl) => {
+      const frame = el("div", {});
       frame.appendChild(
-        button("Match character speed", () => this._resetFarnsworth(), "btn-block btn-panel")
+        el("p", {
+          class: "small muted",
+          text:
+            "Characters are sent at your Character Speed above, while the gaps between " +
+            "characters and words can be slowed down separately to make listening easier.",
+        })
       );
-    }
-
-    return frame;
-  }
-
-  _onFarnsworth(v) {
-    this.app.profile.settings.farnsworthWpm = v;
-    this.app.saveProfile();
-  }
-
-  _resetFarnsworth() {
-    this.app.profile.settings.farnsworthWpm = null;
-    this.app.saveProfile();
-    this._rebuild();
-  }
-
-  _themeSection() {
-    const frame = el("div", { class: "slider-frame" });
-    frame.appendChild(el("span", { text: "Appearance" }));
-    frame.appendChild(
-      el("p", {
-        class: "small muted",
-        text: "System follows your device's light/dark setting.",
-      })
-    );
-
-    const current = storage.getTheme();
-    const tabs = el("div", { class: "tabs" });
-    for (const [value, label] of [
-      ["system", "System"],
-      ["light", "Light"],
-      ["dark", "Dark"],
-    ]) {
-      const tab = el("button", {
-        class: `tab-btn ${value === current ? "tab-btn-active" : ""}`.trim(),
-        text: label,
-        "aria-pressed": String(value === current),
-        onclick: () => this._onTheme(value),
+      const input = el("input", { type: "range", min: "5", max: "35", value: String(value) });
+      // Live value + save while dragging (input); a full rebuild only on
+      // release (change) — rebuilding mid-drag would replace this input's
+      // own DOM node and abort the drag gesture partway through.
+      input.addEventListener("input", () => {
+        const v = Number(input.value);
+        const off = v >= s.wpm;
+        valueLbl.textContent = off ? `${v} WPM (same as character speed)` : `${v} WPM`;
+        this._onFarnsworth(off ? null : v);
       });
-      tabs.appendChild(tab);
-    }
-    attachArrowNav(tabs);
-    frame.appendChild(tabs);
-    return frame;
-  }
-
-  _onTheme(theme) {
-    this.app.setTheme(theme);
-    this._rebuild();
-  }
-
-  _keepAwakeSection() {
-    const frame = el("div", { class: "slider-frame" });
-    const row = el("div", { class: "row" });
-    row.appendChild(el("span", { text: "Keep headphones awake" }));
-    const s = this.app.profile.settings;
-    const stateLbl = el("span", {
-      class: s.keepAwake ? "good" : "muted",
-      text: s.keepAwake ? "On" : "Off",
+      input.addEventListener("change", () => this._rebuild());
+      frame.appendChild(input);
+      if (!isOff) {
+        frame.appendChild(
+          button("Match character speed", () => this._resetFarnsworth(), "btn-block btn-panel")
+        );
+      }
+      return frame;
     });
-    row.appendChild(stateLbl);
-    frame.appendChild(row);
-    frame.appendChild(
-      el("p", {
-        class: "small muted",
-        text:
-          "Feeds a silent, inaudible tone in the background so Bluetooth headphones " +
-          "don't fall asleep between beeps and clip the start of the next one.",
-      })
-    );
-    frame.appendChild(
-      button(
-        s.keepAwake ? "Turn off" : "Turn on",
-        () => this._toggleKeepAwake(),
-        "btn-block btn-panel"
-      )
-    );
-    return frame;
-  }
-
-  _toggleKeepAwake() {
-    this.app.setKeepAwake(!this.app.profile.settings.keepAwake);
-    this._rebuild();
   }
 
   _sendKeysSection() {
@@ -278,6 +237,129 @@ export class Settings {
     }
 
     return row;
+  }
+
+  // ---- Audio tab ----
+
+  _audioPanel() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+    wrap.appendChild(
+      this._collapsible("freq", "Tone Pitch", `${s.freq} Hz`, (valueLbl) => this._freqSlider(valueLbl))
+    );
+    wrap.appendChild(
+      this._collapsible("volume", "Volume", `${s.volume ?? 70}%`, (valueLbl) => this._volumeSlider(valueLbl))
+    );
+    wrap.appendChild(button("Test tone  ♪", () => this._testTone(), "btn-block btn-accent"));
+    wrap.appendChild(this._keepAwakeSection());
+    return wrap;
+  }
+
+  _freqSlider(valueLbl) {
+    const s = this.app.profile.settings;
+    const input = el("input", { type: "range", min: "300", max: "1000", value: String(s.freq) });
+    input.addEventListener("input", () => {
+      valueLbl.textContent = `${input.value} Hz`;
+      this._onFreqLive(Number(input.value));
+    });
+    return input;
+  }
+
+  _volumeSlider(valueLbl) {
+    const s = this.app.profile.settings;
+    const input = el("input", { type: "range", min: "10", max: "100", value: String(s.volume ?? 70) });
+    input.addEventListener("input", () => {
+      valueLbl.textContent = `${input.value}%`;
+      this._onVolumeLive(Number(input.value));
+    });
+    return input;
+  }
+
+  _keepAwakeSection() {
+    const frame = el("div", { class: "slider-frame" });
+    const row = el("div", { class: "row" });
+    row.appendChild(el("span", { text: "Keep headphones awake" }));
+    const s = this.app.profile.settings;
+    const stateLbl = el("span", {
+      class: s.keepAwake ? "good" : "muted",
+      text: s.keepAwake ? "On" : "Off",
+    });
+    row.appendChild(stateLbl);
+    frame.appendChild(row);
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Feeds a silent, inaudible tone in the background so Bluetooth headphones " +
+          "don't fall asleep between beeps and clip the start of the next one.",
+      })
+    );
+    frame.appendChild(
+      button(
+        s.keepAwake ? "Turn off" : "Turn on",
+        () => this._toggleKeepAwake(),
+        "btn-block btn-panel"
+      )
+    );
+    return frame;
+  }
+
+  _toggleKeepAwake() {
+    this.app.setKeepAwake(!this.app.profile.settings.keepAwake);
+    this._rebuild();
+  }
+
+  // ---- Appearance tab ----
+
+  _appearancePanel() {
+    const wrap = el("div", {});
+    wrap.appendChild(this._themeSection());
+    return wrap;
+  }
+
+  _themeSection() {
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Appearance" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "System follows your device's light/dark setting.",
+      })
+    );
+
+    const current = storage.getTheme();
+    const tabs = el("div", { class: "tabs" });
+    for (const [value, label] of [
+      ["system", "System"],
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ]) {
+      const tab = el("button", {
+        class: `tab-btn ${value === current ? "tab-btn-active" : ""}`.trim(),
+        text: label,
+        "aria-pressed": String(value === current),
+        onclick: () => this._onTheme(value),
+      });
+      tabs.appendChild(tab);
+    }
+    attachArrowNav(tabs);
+    frame.appendChild(tabs);
+    return frame;
+  }
+
+  _onTheme(theme) {
+    this.app.setTheme(theme);
+    this._rebuild();
+  }
+
+  // ---- Data tab ----
+
+  _dataPanel() {
+    const wrap = el("div", {});
+    wrap.appendChild(this._pinSection());
+    wrap.appendChild(this._backupSection());
+    wrap.appendChild(button("Reset this profile's progress", () => this._reset(), "btn-block btn-danger"));
+    return wrap;
   }
 
   _pinSection() {
@@ -423,19 +505,33 @@ export class Settings {
     this._build();
   }
 
-  _onWpm(v) {
+  // Live-update while dragging (matches the original sliders' feel) without
+  // a full _rebuild() on every input event — only the value text needs to
+  // change, and _collapsible() already keeps the slider itself mounted.
+  _onWpmLive(v) {
     this.app.profile.settings.wpm = v;
     this.app.saveProfile();
   }
 
-  _onFreq(v) {
+  _onFreqLive(v) {
     this.app.profile.settings.freq = v;
     this.app.saveProfile();
   }
 
-  _onVolume(v) {
+  _onVolumeLive(v) {
     this.app.profile.settings.volume = v;
     this.app.saveProfile();
+  }
+
+  _onFarnsworth(v) {
+    this.app.profile.settings.farnsworthWpm = v;
+    this.app.saveProfile();
+  }
+
+  _resetFarnsworth() {
+    this.app.profile.settings.farnsworthWpm = null;
+    this.app.saveProfile();
+    this._rebuild();
   }
 
   _testTone() {
@@ -458,6 +554,12 @@ export class Settings {
     p.send_seen = {};
     p.send_miss_streak = {};
     p.mistakes = {};
+    // Fluency (scoring.js) is a learning signal derived from the same
+    // practice history as the counters above — reset it alongside them so
+    // a character can't stay "mastered by speed" after its accuracy data
+    // has been wiped.
+    p.receive_fluency_ms = {};
+    p.send_fluency_ms = {};
     this.app.saveProfile();
     await alertDialog("Progress reset.");
   }

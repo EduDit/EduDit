@@ -6,8 +6,12 @@
 
 import * as storage from "./storage.js";
 import { el, button } from "./dom.js";
+import { streakDays } from "./dailyPractice.js";
 
 export class ProfileSelect {
+  // Pre-profile state — renders its own centered layout, not the app shell.
+  static chromeless = true;
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
@@ -15,19 +19,17 @@ export class ProfileSelect {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen center" });
+    const wrap = el("div", { class: "screen view-focused center" });
 
     wrap.appendChild(el("div", { class: "title", text: "DitDash" }));
     wrap.appendChild(el("p", { class: "small muted", text: "Morse code trainer" }));
-    wrap.appendChild(el("h2", { class: "heading", text: "Choose a profile" }));
+    wrap.appendChild(el("h2", { class: "heading", text: "Who's practicing?", style: { margin: "28px 0 4px" } }));
 
     const list = el("div", { class: "profile-list" });
     const profiles = storage.listProfiles();
     if (profiles.length) {
       for (const name of profiles) {
-        const locked = !!storage.loadProfile(name).pin;
-        const label = locked ? `${name}  🔒` : name;
-        list.appendChild(button(label, () => this._choose(name), "btn-block btn-left"));
+        list.appendChild(this._profileRow(name));
       }
     } else {
       list.appendChild(el("p", { class: "small muted", text: "No profiles yet — create one below." }));
@@ -72,6 +74,29 @@ export class ProfileSelect {
     this.root.appendChild(wrap);
     this.input = input;
     this.pinInput = pinInput;
+  }
+
+  // Each row shows enough of the profile's own progress to recognize it at
+  // a glance — level/streak, not just a bare name — so picking one feels
+  // like "continue where I left off," not a technical login screen.
+  _profileRow(name) {
+    const profile = storage.loadProfile(name);
+    const level = Math.max(profile.receive_level, profile.send_level);
+    const streak = streakDays(profile.daily_practice);
+    const hasProgress = level > 1 || streak > 0;
+    const desc = hasProgress ? `Level ${level}${streak > 0 ? `   ·   ${streak}-day streak` : ""}` : "New profile";
+
+    return el(
+      "button",
+      { class: "option-row", onclick: () => this._choose(name) },
+      [
+        el("span", {}, [
+          el("span", { class: "option-row-title", text: profile.pin ? `${name}  🔒` : name }),
+          el("span", { class: "option-row-desc", text: desc }),
+        ]),
+        el("span", { class: "option-row-arrow", "aria-hidden": "true", text: "›" }),
+      ]
+    );
   }
 
   _choose(name) {

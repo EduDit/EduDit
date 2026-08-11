@@ -1,32 +1,50 @@
-// Scoreboard: an informational hub, not just a leaderboard. Compares every
-// profile saved on this device/browser, then lets you drill into one
-// profile's letter-by-letter Receive/Send accuracy — the same data that
-// used to live only on the main menu's "Weak letters" card — and jump
-// straight into practicing the letters giving it trouble.
+// Progress: answers "are you improving?" first (Overview), then lets you
+// drill into per-character accuracy (Letters) or daily consistency
+// (Activity) — three tabs instead of one long scroll, merged down from an
+// earlier four-tab draft since Accuracy/Characters would have shown the
+// same per-letter data under two different labels. Also an informational
+// hub, not just a leaderboard: compares every profile saved on this
+// device/browser, then lets you drill into one profile's Receive/Send
+// breakdown and jump straight into practicing the letters giving it trouble.
 
 import * as storage from "./storage.js";
 import * as codes from "./codes.js";
-import { el, button, attachArrowNav } from "./dom.js";
+import { el, button, tabBar, pageHeader, attachArrowNav } from "./dom.js";
 import { accuracyRows, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
-import { ACHIEVEMENTS } from "./achievements.js";
+import { ACHIEVEMENTS, overallAccuracyPct } from "./achievements.js";
+import { streakDays, todayKey } from "./dailyPractice.js";
+
+const OUTER_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "letters", label: "Letters" },
+  { id: "activity", label: "Activity" },
+];
+
+// How many recent days the Activity bar strip shows.
+const ACTIVITY_DAYS = 14;
 
 export class Scoreboard {
+  static navId = "progress";
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
     this.selectedName = app.profileName;
-    this.tab = "receive";
+    this.tab = "overview";
+    // The Letters tab's own Receive/Send switch — separate from `tab`
+    // above, which switches Overview/Letters/Activity.
+    this.innerTab = "receive";
     this._build();
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
-
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Progress" }));
-    wrap.appendChild(top);
-
+    const wrap = el("div", { class: "screen view-wide" });
+    wrap.appendChild(
+      pageHeader({
+        title: "Progress",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
+    );
     wrap.appendChild(
       el("p", { class: "small muted", text: "See what you've mastered and what needs work." })
     );
@@ -46,18 +64,59 @@ export class Scoreboard {
       .sort((a, b) => b.score - a.score);
 
     if (!names.includes(this.selectedName)) this.selectedName = rows[0].name;
-
     const selected = rows.find((r) => r.name === this.selectedName);
-    wrap.appendChild(this._table(rows));
-    wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(this._detail(selected));
-    wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(this._achievementsSection(selected));
+
+    wrap.appendChild(tabBar(OUTER_TABS, this.tab, (id) => this._setTab(id)));
+
+    if (this.tab === "overview") wrap.appendChild(this._overviewPanel(rows, selected));
+    else if (this.tab === "letters") wrap.appendChild(this._lettersPanel(selected));
+    else wrap.appendChild(this._activityPanel(selected));
 
     this.root.appendChild(wrap);
   }
 
-  // Kept secondary — a small section here, not a Home-screen feature.
+  // "Are you improving?" leads the page; the multi-profile comparison table
+  // and achievements are real but secondary, pushed below it rather than
+  // competing with it for attention.
+  _overviewPanel(rows, selected) {
+    const wrap = el("div", {});
+    wrap.appendChild(this._improvingHero(selected));
+
+    wrap.appendChild(el("div", { class: "divider" }));
+    wrap.appendChild(el("p", { class: "section-title", text: "Compare Profiles" }));
+    wrap.appendChild(this._table(rows));
+
+    wrap.appendChild(el("div", { class: "divider" }));
+    wrap.appendChild(this._achievementsSection(selected));
+
+    return wrap;
+  }
+
+  // A status, not a fabricated trend — there's no session history to point
+  // at "improved since last week," so this reports current accuracy and
+  // streak plainly rather than overclaiming.
+  _improvingHero(entry) {
+    const pct = overallAccuracyPct(entry.profile);
+    const dayStreak = streakDays(entry.profile.daily_practice);
+
+    const card = el("div", { class: "card hero-card" });
+    card.appendChild(el("span", { class: "badge", text: "Are You Improving?" }));
+    card.appendChild(
+      el("div", { class: "hero-number", text: pct != null ? `${Math.round(pct)}%` : "—", style: { margin: "8px 0 2px" } })
+    );
+    card.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          pct != null
+            ? `${entry.name}'s overall accuracy${dayStreak > 0 ? `   ·   ${dayStreak}-day streak` : ""}`
+            : "Practice a little and your accuracy will show up here.",
+      })
+    );
+    return card;
+  }
+
+  // Kept secondary — a small section, not a Home-screen feature.
   _achievementsSection(entry) {
     const earned = entry.profile.achievements || {};
     const earnedList = ACHIEVEMENTS.filter((a) => earned[a.id]);
@@ -121,39 +180,50 @@ export class Scoreboard {
     return table;
   }
 
+  // Selecting a profile from the comparison table jumps straight to its
+  // Letters tab — the whole point of picking a different profile here is to
+  // see its accuracy, so this avoids an extra "now click Letters" step.
   _select(name) {
-    if (name === this.selectedName) return;
+    if (name === this.selectedName && this.tab === "letters") return;
     this.selectedName = name;
-    this.tab = "receive";
+    this.tab = "letters";
+    this.innerTab = "receive";
     this.root.innerHTML = "";
     this._build();
   }
 
-  _setTab(tab) {
-    if (tab === this.tab) return;
-    this.tab = tab;
+  _setTab(id) {
+    if (id === this.tab) return;
+    this.tab = id;
     this.root.innerHTML = "";
     this._build();
   }
 
-  _detail(entry) {
+  _setInnerTab(tab) {
+    if (tab === this.innerTab) return;
+    this.innerTab = tab;
+    this.root.innerHTML = "";
+    this._build();
+  }
+
+  _lettersPanel(entry) {
     const wrap = el("div", {});
     wrap.appendChild(el("p", { class: "heading detail-heading", text: `${entry.name} — letter accuracy` }));
 
     const tabs = el("div", { class: "tabs" });
-    tabs.appendChild(this._tabButton("Receive", "receive"));
-    tabs.appendChild(this._tabButton("Send", "send"));
+    tabs.appendChild(this._innerTabButton("Receive", "receive"));
+    tabs.appendChild(this._innerTabButton("Send", "send"));
     attachArrowNav(tabs);
     wrap.appendChild(tabs);
 
     const p = entry.profile;
-    const seen = this.tab === "receive" ? p.receive_seen : p.send_seen;
-    const mistakes = this.tab === "receive" ? p.receive_mistakes : p.send_mistakes;
+    const seen = this.innerTab === "receive" ? p.receive_seen : p.send_seen;
+    const mistakes = this.innerTab === "receive" ? p.receive_mistakes : p.send_mistakes;
     const rows = accuracyRows(seen || {}, mistakes || {}, codes.LEARNING_ORDER);
 
     if (rows.length === 0) {
       wrap.appendChild(
-        el("p", { class: "small muted", text: `No ${this.tab} practice recorded yet.` })
+        el("p", { class: "small muted", text: `No ${this.innerTab} practice recorded yet.` })
       );
       return wrap;
     }
@@ -174,10 +244,10 @@ export class Scoreboard {
     return wrap;
   }
 
-  _tabButton(label, tab) {
-    const active = this.tab === tab;
+  _innerTabButton(label, tab) {
+    const active = this.innerTab === tab;
     const cls = `tab-btn${active ? " tab-btn-active" : ""}`;
-    const btn = button(label, () => this._setTab(tab), cls);
+    const btn = button(label, () => this._setInnerTab(tab), cls);
     btn.setAttribute("aria-pressed", String(active));
     return btn;
   }
@@ -198,9 +268,48 @@ export class Scoreboard {
     return list;
   }
 
+  // Real data only — dailyPractice.js tracks per-day active minutes, not a
+  // session log, so this is a recent-days bar strip + streak, not an
+  // invented list of individual sessions.
+  _activityPanel(entry) {
+    const p = entry.profile;
+    const dayStreak = streakDays(p.daily_practice);
+
+    const wrap = el("div", {});
+    wrap.appendChild(el("p", { class: "heading", text: `${entry.name} — activity` }));
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text: dayStreak > 0 ? `${dayStreak}-day practice streak.` : "No recent activity streak yet.",
+      })
+    );
+    wrap.appendChild(this._activityBars(p.daily_practice || {}));
+    return wrap;
+  }
+
+  _activityBars(dailyPractice) {
+    const days = [];
+    const cursor = new Date();
+    for (let i = ACTIVITY_DAYS - 1; i >= 0; i--) {
+      const d = new Date(cursor);
+      d.setDate(cursor.getDate() - i);
+      days.push(dailyPractice[todayKey(d)] || 0);
+    }
+    const maxMs = Math.max(1, ...days);
+
+    const wrap = el("div", { class: "activity-bars" });
+    for (const ms of days) {
+      const pct = ms > 0 ? Math.max(6, Math.round((ms / maxMs) * 100)) : 3;
+      const bar = el("div", { class: "activity-bar", title: `${Math.round(ms / 60000)} min` });
+      bar.appendChild(el("div", { class: `activity-bar-fill${ms > 0 ? " good" : ""}`, style: { height: `${pct}%` } }));
+      wrap.appendChild(bar);
+    }
+    return wrap;
+  }
+
   _practiceWeak(chars) {
     const options = { lessonChars: chars, lessonLabel: "Weak letters", returnTo: "lessons" };
-    if (this.tab === "receive") {
+    if (this.innerTab === "receive") {
       import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
     } else {
       import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));

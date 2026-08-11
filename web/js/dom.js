@@ -87,6 +87,46 @@ export function morseGlyphs(pattern, kind = "") {
   return wrap;
 }
 
+// A segmented tab bar — builds on the .tabs/.tab-btn CSS already used by
+// Settings' theme picker and Scoreboard's Receive/Send switch. `items` is
+// `[{ id, label }]`; `onChange(id)` fires on selection. Callers own
+// re-rendering (same pattern as the rest of the app — no internal state).
+export function tabBar(items, activeId, onChange) {
+  const wrap = el("div", { class: "tabs", role: "tablist" });
+  for (const item of items) {
+    const active = item.id === activeId;
+    wrap.appendChild(
+      el("button", {
+        class: `tab-btn${active ? " tab-btn-active" : ""}`,
+        text: item.label,
+        role: "tab",
+        "aria-selected": String(active),
+        onclick: () => onChange(item.id),
+      })
+    );
+  }
+  attachArrowNav(wrap);
+  return wrap;
+}
+
+// An optional small "Practice / Receive"-style eyebrow + title row — used
+// where a breadcrumb genuinely helps orientation. Not a mandatory template;
+// several screens (Home, focused Practice sub-screens) compose their own
+// header instead because a breadcrumb wouldn't add anything there.
+export function pageHeader({ eyebrow, title, actions } = {}) {
+  const wrap = el("div", { class: "page-header row" });
+  const textWrap = el("div", { style: { minWidth: "0" } });
+  if (eyebrow) textWrap.appendChild(el("p", { class: "eyebrow", text: eyebrow }));
+  textWrap.appendChild(el("h1", { class: "title", text: title }));
+  wrap.appendChild(textWrap);
+  if (actions && actions.length) {
+    const actionsWrap = el("div", { class: "page-header-actions" });
+    for (const a of actions) actionsWrap.appendChild(a);
+    wrap.appendChild(actionsWrap);
+  }
+  return wrap;
+}
+
 // Roving arrow-key navigation for a dense group of buttons (a character
 // grid, an on-screen keyboard, a tab pair) — Left/Right move focus to the
 // previous/next enabled match in DOM order, Up/Down move by `columns` (if

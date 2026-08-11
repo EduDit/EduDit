@@ -4,7 +4,7 @@
 // running. No answering, no scoring — pure ear training in the background.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, isDigit, attachArrowNav } from "./dom.js";
+import { el, button, morseGlyphs, isDigit, attachArrowNav, pageHeader } from "./dom.js";
 import { clamp } from "./learning.js";
 
 const MIN_REPEATS = 1;
@@ -31,9 +31,13 @@ const KEYBOARD_ROWS = [
 ];
 
 export class ListenPractice {
-  constructor(root, app) {
+  static navId = "practice";
+
+  constructor(root, app, options = {}) {
     this.root = root;
     this.app = app;
+    // See the matching field in receivePractice.js — same reasoning.
+    this.embedded = !!options.embedded;
     this.selected = new Set();
     this.running = false;
     this._cycleId = 0;
@@ -42,12 +46,17 @@ export class ListenPractice {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: this.embedded ? "screen" : "screen view-focused" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Listen Practice" }));
-    wrap.appendChild(top);
+    if (!this.embedded) {
+      wrap.appendChild(
+        pageHeader({
+          eyebrow: "Practice",
+          title: "Listen",
+          actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+        })
+      );
+    }
 
     wrap.appendChild(
       el("p", {

@@ -2,7 +2,7 @@
 // offers the same one-click self-update as the startup banner — reachable
 // from Settings instead of only appearing when an update is already found.
 
-import { el, button } from "./dom.js";
+import { el, button, pageHeader } from "./dom.js";
 import { APP_VERSION } from "./version.js";
 import { fetchReleaseHistory, canSelfUpdate, applyUpdate } from "./updateCheck.js";
 
@@ -14,12 +14,15 @@ export class VersionHistory {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-standard" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Settings", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Version History" }));
-    wrap.appendChild(top);
+    wrap.appendChild(
+      pageHeader({
+        eyebrow: "Settings",
+        title: "Version History",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
+    );
 
     wrap.appendChild(el("p", { class: "small muted", text: `You're running version ${APP_VERSION}.` }));
 

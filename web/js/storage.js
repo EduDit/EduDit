@@ -54,9 +54,17 @@ export function defaultProfile() {
     // be excluded from accuracy/achievement math or it would inflate
     // "correct" — see achievements.js and mainMenu.js's _overallAccuracy.
     receive_dont_know: {},
+    // { char: exponential-moving-average response ms } — Receive-mode
+    // "blind" rounds only (auto-hint/brand-new/"I don't know" rounds are
+    // excluded, see receivePractice.js). Read by characterState.js's
+    // isStrong() as fluency, kept entirely separate from accuracy — see
+    // scoring.js.
+    receive_fluency_ms: {},
     send_seen: {},
     send_miss_streak: {},
     send_mistakes: {},
+    // Send-mode counterpart of receive_fluency_ms above.
+    send_fluency_ms: {},
     mistakes: {},
     custom_lessons: [],
     pin: null,

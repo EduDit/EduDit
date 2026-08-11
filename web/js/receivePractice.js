@@ -1,15 +1,16 @@
 // Receive Practice: hear a tone, tap the matching character.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, showToast, QWERTY_ROWS, isDigit, attachArrowNav } from "./dom.js";
+import { el, button, morseGlyphs, showToast, QWERTY_ROWS, isDigit, attachArrowNav, pageHeader } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
 import { explainCharacter } from "./explainSelection.js";
 import { evaluateAchievements } from "./achievements.js";
 import { recordActivity } from "./dailyPractice.js";
 import { newCharacterCard } from "./teachingCard.js";
+import { calculateResponseScore, updateFluencyEma } from "./scoring.js";
 
 // A session recap only means something once a few rounds have actually
-// happened — below this, a manual exit ("< Menu"/Esc) just navigates back
+// happened — below this, a manual exit (Back/Esc) just navigates back
 // directly instead of showing Session Summary. A level-up always shows it
 // regardless of this threshold (streakToClear can be as low as 2 at early
 // levels, so a legitimate level-up can happen in fewer rounds than this).
@@ -23,6 +24,8 @@ const WRONG_PENALTY = 2;
 const GETTING_STRONGER_THRESHOLD = 2;
 
 export class ReceivePractice {
+  static navId = "practice";
+
   constructor(root, app, options = {}) {
     this.root = root;
     this.app = app;
@@ -32,43 +35,63 @@ export class ReceivePractice {
     this.lessonChars = options.lessonChars || null;
     this.lessonNumber = options.lessonNumber || null;
     this.lessonLabel = options.lessonLabel || null;
-    // Which screen "< Menu" (and Esc) returns to. Explicit rather than
+    // Which screen Back (and Esc) returns to. Explicit rather than
     // inferred from lessonChars — Home and Journey both launch practice
     // with lessonChars set too now (for weak-letter/single-character
     // drills), so "lessonChars truthy -> came from Lessons" no longer
     // holds. Falls back to the old inference for any caller that doesn't
     // pass it.
     this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
+    // Set when mounted inside PracticeHub — suppresses this screen's own
+    // breadcrumb/description, since the hub already shows "Practice" plus
+    // the active tab's description right above where this mounts.
+    this.embedded = !!options.embedded;
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
     // Tracked in every round (not just lesson-mode) so Session Summary has
     // something real to show regardless of how the session ends.
     this.sessionChars = new Set();
     this.sessionMisses = {};
+    // Per-round response-time scoring (see scoring.js) — a session-local
+    // list of 0-100 scores for Session Summary, kept separate from
+    // sessionCorrect/sessionTotal above (accuracy) and from the
+    // per-character fluency EMA persisted on the profile (automaticity).
+    this.sessionScores = [];
     this.target = null;
     this.answered = false;
     this.autoHint = false;
+    // Timing state is fully reset at the top of every nextRound() — see
+    // there — so a value can never leak from one round into the next.
+    this._roundToken = 0;
+    this._roundScoreable = false;
+    this._recognitionStartMs = null;
+    this._timingInterrupted = false;
     this._timers = [];
     this.keyButtons = {};
     this._visitStart = Date.now();
     this._build();
     this._bindKeys();
+    this._bindVisibility();
     this.nextRound();
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: this.embedded ? "screen" : "screen view-focused" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Receive Morse" }));
-    this.levelLbl = el("span", { class: "level-tag" });
-    top.appendChild(this.levelLbl);
-    wrap.appendChild(top);
-
-    wrap.appendChild(
-      el("p", { class: "small muted", text: "Listen to the tone and identify the character." })
-    );
+    if (!this.embedded) {
+      wrap.appendChild(
+        pageHeader({
+          eyebrow: "Practice",
+          title: "Receive",
+          actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+        })
+      );
+      wrap.appendChild(
+        el("p", { class: "small muted", text: "Listen to the tone and identify the character." })
+      );
+    }
+    this.levelLbl = el("p", { class: "level-tag", style: { margin: "0 0 10px" } });
+    wrap.appendChild(this.levelLbl);
 
     this.status = el("p", { class: "heading status center", "aria-live": "polite" });
     wrap.appendChild(this.status);
@@ -154,12 +177,31 @@ export class ReceivePractice {
     setTimeout(() => key.classList.remove("active"), 120);
   }
 
+  // A background tab must invalidate response timing, not silently count
+  // the hidden time as "response speed" — see the redesign plan's
+  // visibility-loss safeguard. Correctness/streak/mistakes are unaffected;
+  // only the score/fluency sample for the round in progress is skipped.
+  _bindVisibility() {
+    this._onVisibilityChange = () => {
+      if (document.hidden) this._timingInterrupted = true;
+    };
+    document.addEventListener("visibilitychange", this._onVisibilityChange);
+  }
+
   _pool() {
     return this.lessonChars || codes.poolForLevel(this.app.profile.receive_level);
   }
 
   nextRound() {
     this.answered = false;
+    // Every round's timer starts clean — reset unconditionally, before the
+    // auto-hint/brand-new decision below, so a value can never leak from a
+    // previous round (including one abandoned via goBack()/Esc mid-round).
+    this._roundToken += 1;
+    this._roundScoreable = false;
+    this._recognitionStartMs = null;
+    this._timingInterrupted = false;
+
     const pool = this._pool();
     const p = this.app.profile;
     const seen = p.receive_seen || (p.receive_seen = {});
@@ -170,6 +212,10 @@ export class ReceivePractice {
     const seenCount = seen[this.target] || 0;
     const isBrandNew = seenCount === 0;
     this.autoHint = shouldAutoHint(seenCount, missStreaks[this.target] || 0);
+    // Only a genuine "hear it, then answer blind" round is scoreable — a
+    // round where the app is already demonstrating the answer (new
+    // character, auto-hint refresher) can't measure recognition speed.
+    this._roundScoreable = !isBrandNew && !this.autoHint;
     seen[this.target] = seenCount + 1;
     this.app.saveProfile();
 
@@ -257,6 +303,10 @@ export class ReceivePractice {
 
   showHint() {
     if (this.answered) return;
+    // Requesting a hint is the app revealing the answer mid-round, same as
+    // an auto-hint round — whatever the learner answers next isn't blind
+    // recognition anymore, so this round is no longer scoreable.
+    this._roundScoreable = false;
     this.status.textContent = `Hint: it's ${this.target}`;
     this.status.className = "heading status center good";
     this.keyButtons[this.target].classList.add("key-hint");
@@ -277,9 +327,24 @@ export class ReceivePractice {
     }
   }
 
+  // On a scoreable round, the recognition clock starts when the tone
+  // finishes playing (not when play() is called) — starting at call time
+  // would conflate playback duration, which scales with the character's
+  // pattern length and WPM, with how fast the learner actually recognized
+  // it. A Replay mid-round resets the clock too: asking to hear it again is
+  // itself part of "not yet recognized," so timing from the most recent
+  // full playback is the fairer measurement each time.
   play() {
     const s = this.app.profile.settings;
-    this.app.audio.playPattern(codes.MORSE[this.target], s.wpm, s.freq, s.volume);
+    if (!this._roundScoreable || this.answered) {
+      this.app.audio.playPattern(codes.MORSE[this.target], s.wpm, s.freq, s.volume);
+      return;
+    }
+    const token = this._roundToken;
+    this.app.audio.playPatternAsync(codes.MORSE[this.target], s.wpm, s.freq, s.volume).then(() => {
+      if (token !== this._roundToken || this.answered || this._timingInterrupted) return;
+      this._recognitionStartMs = performance.now();
+    });
   }
 
   answer(ch) {
@@ -289,8 +354,30 @@ export class ReceivePractice {
     const s = p.settings;
     this.sessionTotal += 1;
     this.sessionChars.add(this.target);
-    if (ch === this.target) {
+
+    // Response-time scoring — see scoring.js and play() above for exactly
+    // what this interval does/doesn't include. Skipped entirely (no score,
+    // no fluency sample) for a non-scoreable round or one interrupted by a
+    // tab/window visibility change.
+    const responseMs =
+      this._roundScoreable && this._recognitionStartMs != null && !this._timingInterrupted
+        ? performance.now() - this._recognitionStartMs
+        : null;
+    const correct = ch === this.target;
+    if (responseMs != null) {
+      this.sessionScores.push(calculateResponseScore({ correct, responseMs }));
+    }
+
+    if (correct) {
       this.sessionCorrect += 1;
+      if (responseMs != null) {
+        // Fluency (automaticity) only updates on a correct, scored round —
+        // a fast wrong guess isn't "fast recognition," so it must never
+        // make a character look more fluent than it is. Kept entirely
+        // separate from the 0-100 score computed just above.
+        const fluencyMap = p.receive_fluency_ms || (p.receive_fluency_ms = {});
+        fluencyMap[this.target] = updateFluencyEma(fluencyMap[this.target] ?? null, responseMs);
+      }
       const priorMissStreak = p.receive_miss_streak[this.target] || 0;
       p.receive_miss_streak[this.target] = 0;
       if (priorMissStreak >= GETTING_STRONGER_THRESHOLD) {
@@ -425,6 +512,7 @@ export class ReceivePractice {
       total: this.sessionTotal,
       chars: this.sessionChars,
       misses: this.sessionMisses,
+      scores: this.sessionScores,
       leveledUp: false,
       unlockedChars: [],
       ...extra,
@@ -435,6 +523,7 @@ export class ReceivePractice {
   destroy() {
     for (const t of this._timers) clearTimeout(t);
     document.removeEventListener("keydown", this._onKeyDown);
+    document.removeEventListener("visibilitychange", this._onVisibilityChange);
     this.app.audio.stop();
     recordActivity(this.app.profile, Date.now() - this._visitStart);
     // Re-check achievements here too — five_minute_practice_day is only

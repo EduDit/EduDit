@@ -1,12 +1,12 @@
 :root {
-  /* Backgrounds */
-  --bg: #f5f5f7;
-  --surface: rgba(255, 255, 255, 0.72);       /* translucent, blurred cards */
-  --panel: #ffffff;                            /* opaque surface (dialogs, inputs, rows) */
-  --panel-2: #f0f0f2;                           /* secondary/pressed surface */
-  --header-bg: rgba(245, 245, 247, 0.82);       /* frosted sticky header */
+  /* Backgrounds — warm, neutral light palette; not pure-white boxes. */
+  --bg: #f6f5f3;
+  --surface: rgba(255, 255, 255, 0.72);       /* translucent, blurred — reserved for nav/dialogs/toasts */
+  --panel: #fefefc;                            /* opaque surface (cards, dialogs, inputs, rows) */
+  --panel-2: #efeeec;                           /* secondary/pressed surface */
+  --header-bg: rgba(246, 245, 243, 0.82);       /* frosted sticky header */
 
-  --border: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.07);
 
   /* Text */
   --fg: #1d1d1f;
@@ -22,17 +22,51 @@
   --bad-soft: rgba(255, 59, 48, 0.1);
 
   /* Buttons */
-  --btn-bg: #f0f0f2;
-  --btn-active: #e4e4e7;
+  --btn-bg: #f0efed;
+  --btn-active: #e5e3e0;
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.1);
+  /* Elevation — extremely subtle in light mode by design (item 12). */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03), 0 3px 10px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.08);
 
   /* Radii */
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 22px;
+
+  /* Spacing scale — the base rhythm for the whole app. Not applied blindly
+     everywhere; existing hand-tuned component spacing is left as-is unless
+     a stage explicitly reworks that component's layout. */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 48px;
+  --space-6: 64px;
+  --space-7: 96px;
+
+  /* Typography scale — size/weight pairs, used by new layout (shell, page
+     headers, Home hero) rather than retrofitted onto every existing class. */
+  --text-hero-size: 40px;
+  --text-hero-weight: 800;
+  --text-title-size: 27px;
+  --text-title-weight: 800;
+  --text-heading-size: 17px;
+  --text-heading-weight: 650;
+  --text-body-size: 15px;
+  --text-body-weight: 400;
+  --text-small-size: 13px;
+  --text-small-weight: 400;
+
+  /* Content container widths — the shell picks one of these per page via
+     .view-focused/.view-standard/.view-wide instead of one fixed #app width. */
+  --content-width-focused: 640px;
+  --content-width-standard: 880px;
+  --content-width-wide: 1120px;
+
+  /* Shell chrome */
+  --nav-height: 56px;
+  --bottom-nav-height: 58px;
 
   color-scheme: light dark;
 }
@@ -112,12 +146,163 @@ html, body {
 }
 
 #app {
-  max-width: 520px;
-  margin: 0 auto;
   min-height: 100vh;
-  padding: 0 18px;
   display: flex;
   flex-direction: column;
+}
+
+/* App shell: persistent top nav (+ bottom tab bar on mobile) around a
+   content mount. Chromeless views (Profile Select, Onboarding) render
+   directly into #app without .app-shell — see shell.js. */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--nav-height);
+  padding: 0 var(--space-3);
+  background: var(--header-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.app-nav-brand {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.app-nav-primary { display: none; gap: var(--space-3); flex: 1; align-items: center; }
+.app-nav-link {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 6px 1px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.app-nav-link:hover { color: var(--fg); }
+.app-nav-link-active, .app-nav-link-active:hover { color: var(--fg); border-bottom-color: var(--accent); }
+.app-nav-link:focus-visible,
+.bottom-nav-link:focus-visible,
+.app-nav-icon-btn:focus-visible,
+.app-nav-profile:focus-visible,
+.app-nav-brand:focus-visible,
+.tab-btn:focus-visible,
+.option-row:focus-visible,
+.link-btn:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.app-nav-secondary { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+.app-nav-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.app-nav-icon-btn:hover { background: var(--btn-bg); color: var(--fg); }
+.app-nav-profile {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--btn-bg);
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-nav-profile:hover { background: var(--btn-active); }
+
+#view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Per-page content containers — a page picks exactly one, applied to its
+   outermost wrapper alongside .screen. Replaces the old single #app
+   max-width with a per-page-type width so Practice stays narrow/focused
+   while Home/Progress can use real desktop width. */
+.view-focused, .view-standard, .view-wide {
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-3) var(--space-6);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.view-focused { max-width: var(--content-width-focused); }
+.view-standard { max-width: var(--content-width-standard); }
+.view-wide { max-width: var(--content-width-wide); }
+
+.bottom-nav {
+  display: flex;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--header-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.bottom-nav-link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: var(--bottom-nav-height);
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bottom-nav-link-icon { font-size: 19px; line-height: 1; }
+.bottom-nav-link-active { color: var(--accent); }
+
+@media (min-width: 760px) {
+  .app-nav-primary { display: flex; }
+  .bottom-nav { display: none; }
+  .view-focused, .view-standard, .view-wide { padding: var(--space-4) var(--space-4) var(--space-7); }
 }
 
 .screen { display: flex; flex-direction: column; }
@@ -136,6 +321,29 @@ html, body {
 .header-row .title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .heading { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--fg); }
 .small { font-size: 13px; }
+
+/* Small contextual label above a title, e.g. "Practice / Receive" — used by
+   dom.js's pageHeader() helper. Optional per-screen, not a mandatory template. */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin: 0 0 2px;
+}
+.page-header { margin: 4px 0 var(--space-4); }
+.page-header .title { margin: 0 0 4px; }
+.page-header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* A large standalone number — Home's quiet stat line, Session Summary's
+   Session Score, Progress's headline stat. */
+.hero-number {
+  font-size: var(--text-hero-size);
+  font-weight: var(--text-hero-weight);
+  letter-spacing: -0.03em;
+  color: var(--fg);
+  line-height: 1;
+}
 .muted { color: var(--muted); }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
@@ -152,19 +360,13 @@ html, body {
 
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .row.end { justify-content: flex-end; }
-.title-wrap { justify-content: flex-start; gap: 8px; }
+/* Used only by chromeless screens now (Onboarding) — the app shell's own
+   .app-nav is the persistent sticky header everywhere else, so this no
+   longer needs to bleed edge-to-edge or stick on its own. */
 .header-row {
   padding: 14px 2px;
-  position: sticky;
-  top: 0;
-  background: var(--header-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
-  margin: 0 -18px;
-  padding-left: 18px;
-  padding-right: 18px;
-  z-index: 5;
+  margin: 0 0 4px;
 }
 
 .btn {
@@ -210,19 +412,22 @@ html, body {
 .button-row { display: flex; gap: 8px; margin: 14px 0; }
 .button-row .btn { flex: 1; padding: 13px; text-align: center; }
 
+/* Rendered as a direct child of .app-shell, between .app-nav and #view (or
+   at the top of #app for chromeless screens) — full-bleed by default now,
+   no negative-margin trick needed. */
 .update-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 18px;
+  padding: 10px var(--space-3);
   background: var(--header-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  margin: 0 -18px;
-  z-index: 10;
+  z-index: 15;
+  flex: 0 0 auto;
 }
 .update-banner .update-status { color: var(--muted); flex: 1; }
 .update-banner .btn { padding: 6px 12px; text-decoration: none; }
@@ -277,16 +482,29 @@ html, body {
 }
 .key.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* Opaque, not glassy — cards are reserved for genuinely grouped content
+   (the hero recommendation, a lesson row) and don't need blur to read as
+   "raised." Blur stays reserved for nav/dialogs/toasts (item 14). */
 .card {
-  background: var(--surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 18px;
   margin: 10px 0;
 }
+
+/* A plain sectioned block — typography/dividers instead of a card wrapper,
+   for content that doesn't need visual grouping/emphasis (item 8). */
+.section { margin: var(--space-4) 0; }
+.section-title {
+  font-size: var(--text-heading-size);
+  font-weight: var(--text-heading-weight);
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  margin: 0 0 4px;
+}
+.section-subtitle { color: var(--muted); font-size: var(--text-small-size); margin: 0 0 12px; }
 .badge {
   font-size: 11px;
   font-weight: 700;
@@ -314,7 +532,7 @@ html, body {
 
 .onboarding-points p { margin: 6px 0; }
 
-.profile-list { display: flex; flex-direction: column; gap: 6px; }
+.profile-list { display: flex; flex-direction: column; text-align: left; }
 
 .entry-row { display: flex; gap: 8px; align-items: center; }
 .text-input {
@@ -421,9 +639,36 @@ html, body {
 .scoreboard-current { border-color: var(--accent); }
 .scoreboard-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
 
-/* Tabs (Scoreboard's Receive/Send accuracy breakdown) */
-.tabs { display: flex; gap: 3px; background: var(--panel-2); border-radius: var(--radius-sm); padding: 4px; margin: 12px 0; }
-.tab-btn { flex: 1; background: transparent; border-radius: 8px; padding: 8px; font-weight: 600; }
+/* Tabs — shared by dom.js's tabBar() helper (Practice, Progress, Settings,
+   Lessons' Unlocked/Custom pair) and Scoreboard's Receive/Send breakdown.
+   Horizontally scrollable rather than shrinking tap targets when a group
+   doesn't fit a narrow screen (item 11); flex-grow still fills the width
+   evenly when everything already fits. */
+.tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  margin: 12px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  flex: 1 0 auto;
+  min-width: max-content;
+  font: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: pointer;
+}
 .tab-btn:hover { background: var(--btn-active); }
 .tab-btn-active, .tab-btn-active:hover { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
 
@@ -437,6 +682,79 @@ html, body {
 .accuracy-bar-fill.bad { background: var(--bad); }
 .accuracy-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .accuracy-count { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Home: two columns on desktop (main content + a small Journey teaser),
+   one column everywhere narrower. */
+.home-grid { display: flex; flex-direction: column; gap: var(--space-4); }
+.home-aside { margin: 0; }
+@media (min-width: 1024px) {
+  .home-grid { flex-direction: row; align-items: flex-start; gap: var(--space-6); }
+  .home-main { flex: 2; min-width: 0; }
+  .home-aside { flex: 1; min-width: 0; max-width: 320px; }
+}
+
+/* A single quiet line of stats + a link out — deliberately not a tile grid. */
+.quiet-stat-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.quiet-stat-line > span:first-child { flex: 1; min-width: 0; }
+
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+.link-btn:hover { text-decoration: underline; }
+
+/* Descriptive option rows (Home's "choose what to practice") — typography
+   and a hairline divider carry the list, not individual button chrome. */
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 14px 4px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background-color 0.15s ease;
+}
+.option-row:first-of-type { border-top: none; }
+.option-row:hover { background: var(--panel-2); }
+.option-row-title { display: block; font-weight: 650; font-size: 15px; color: var(--fg); }
+.option-row-desc { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+.option-row-arrow { color: var(--muted); font-size: 20px; flex: 0 0 auto; }
+
+/* Progress: Activity tab's recent-days bar strip — real per-day totals
+   (dailyPractice.js), not an invented session list. */
+.activity-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 84px;
+  margin: 14px 0 4px;
+}
+.activity-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.activity-bar-fill { width: 100%; min-height: 3px; background: var(--panel-2); border-radius: 3px 3px 0 0; }
+.activity-bar-fill.good { background: var(--accent); }
 
 .slider-frame { margin-top: 20px; }
 
@@ -455,17 +773,10 @@ input[type="range"] {
   background: transparent;
 }
 
-@media (min-width: 540px) {
-  #app { padding: 0 28px; }
-  .header-row, .update-banner { margin: 0 -28px; padding-left: 28px; padding-right: 28px; }
-}
-
-/* Tablets/desktops: let the column widen and breathe instead of staying
-   pinned to phone width with empty margins on either side. Scoped to
-   min-width so phones are completely unaffected. */
+/* Tablets/desktops: let cards/controls widen and breathe instead of staying
+   pinned to phone sizing. Scoped to min-width so phones are unaffected.
+   Container width/padding itself is handled by .view-focused/standard/wide. */
 @media (min-width: 760px) {
-  #app { max-width: 640px; padding: 0 36px; }
-  .header-row, .update-banner { margin: 0 -36px; padding-left: 36px; padding-right: 36px; }
   .slider-frame { margin-top: 26px; }
   .card { padding: 22px; margin: 14px 0; }
   .button-row { gap: 12px; margin: 18px 0; }
@@ -475,23 +786,18 @@ input[type="range"] {
   .big-char { margin: 10px 0 16px; }
 }
 
-@media (min-width: 1080px) {
-  #app { max-width: 760px; padding: 0 44px; }
-  .header-row, .update-banner { margin: 0 -44px; padding-left: 44px; padding-right: 44px; }
-}
-
 /* Narrow phones (e.g. iPhone SE): claw back a little width so the ten-wide
    keyboard rows don't shrink their tap targets any further than they have to. */
 @media (max-width: 380px) {
-  #app { padding: 0 10px; }
-  .header-row, .update-banner { margin: 0 -10px; padding-left: 10px; padding-right: 10px; }
+  .view-focused, .view-standard, .view-wide { padding-left: var(--space-2); padding-right: var(--space-2); }
   .keyboard-row { gap: 3px; }
 }
 
 /* Landscape phones: the single-column layout still works, but tall-content
    screens (Journey, Lessons) benefit from a touch more breathing room and a
-   shorter sticky header so the primary action isn't pushed off-screen. */
+   shorter header so the primary action isn't pushed off-screen. */
 @media (max-height: 420px) and (orientation: landscape) {
+  .app-nav { height: 48px; }
   .header-row { padding-top: 8px; padding-bottom: 8px; }
   .title { margin: 12px 0 4px; }
   .big-char { font-size: clamp(48px, 12vw, 84px); margin: 2px 0 6px; }
@@ -538,7 +844,19 @@ input[type="range"] {
 .state-badge.state-locked { background: transparent; color: var(--muted); opacity: 0.6; }
 .state-badge.state-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
 
-/* Morse Journey: a flowing grid of character badges, not a data table. */
+/* Morse Journey: Learn/Practice/Master/Advance bands, each a flowing grid
+   of character badges — not a data table, not one undifferentiated grid. */
+.journey-layout { display: flex; flex-direction: column; gap: var(--space-4); }
+@media (min-width: 1024px) {
+  .journey-layout { flex-direction: row; align-items: flex-start; gap: var(--space-6); }
+  .journey-bands { flex: 2; min-width: 0; }
+  .journey-detail-panel { flex: 1; min-width: 280px; position: sticky; top: calc(var(--nav-height) + var(--space-3)); }
+}
+.journey-band { margin: 0 0 var(--space-4); }
+.journey-band-title { font-size: var(--text-heading-size); font-weight: 700; margin: 0 0 2px; }
+.journey-band-desc { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.journey-detail-placeholder { color: var(--muted); font-size: 14px; padding: var(--space-3) 0; }
+
 .journey-grid {
   display: flex;
   flex-wrap: wrap;

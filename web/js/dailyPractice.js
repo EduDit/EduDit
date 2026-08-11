@@ -16,7 +16,9 @@ const MAX_MS_PER_VISIT = 30 * 60 * 1000;
 // toISOString() here would misfile any practice done in the evening in a
 // timezone west of UTC as "tomorrow," breaking both today's total and the
 // streak right when it's checked.
-function todayKey(date = new Date()) {
+// Exported so Progress's Activity tab can build the same local-day keys for
+// a multi-day bar strip, rather than a second date-formatting implementation.
+export function todayKey(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");

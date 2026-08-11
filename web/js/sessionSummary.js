@@ -13,8 +13,11 @@ import { el, button } from "./dom.js";
 import { tierLetters } from "./weakLetters.js";
 import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { newCharacterCard } from "./teachingCard.js";
+import { sessionScore, scoreLabel } from "./scoring.js";
 
 export class SessionSummary {
+  static navId = "practice";
+
   constructor(root, app, options = {}) {
     this.root = root;
     this.app = app;
@@ -24,6 +27,7 @@ export class SessionSummary {
       total: 0,
       chars: new Set(),
       misses: {},
+      scores: [],
       leveledUp: false,
       unlockedChars: [],
       ...options.stats,
@@ -33,12 +37,18 @@ export class SessionSummary {
 
   _build() {
     const p = this.app.profile;
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-focused" });
 
     wrap.appendChild(el("div", { class: "title", text: "Session Complete", style: { margin: "26px 0 4px" } }));
 
     if (this.stats.leveledUp) {
       wrap.appendChild(this._levelUpSection());
+      wrap.appendChild(el("div", { class: "divider" }));
+    }
+
+    const scoreSection = this._scoreSection();
+    if (scoreSection) {
+      wrap.appendChild(scoreSection);
       wrap.appendChild(el("div", { class: "divider" }));
     }
 
@@ -90,6 +100,22 @@ export class SessionSummary {
       );
     }
     wrap.appendChild(row);
+    return wrap;
+  }
+
+  // Omitted entirely (not shown as a misleading 0) when the session had no
+  // scoreable rounds — e.g. a short review that was all auto-hint/new
+  // characters. Accuracy still shows in _statsSection() below either way.
+  _scoreSection() {
+    const score = sessionScore(this.stats.scores);
+    if (score == null) return null;
+
+    const wrap = el("div", { class: "center" });
+    wrap.appendChild(el("p", { class: "small muted", text: "Session Score" }));
+    wrap.appendChild(el("div", { class: "hero-number", text: String(score) }));
+    wrap.appendChild(
+      el("p", { class: "small muted", text: `Response speed: ${scoreLabel(score)}` })
+    );
     return wrap;
   }
 

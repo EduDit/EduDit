@@ -37,7 +37,10 @@ function sumValues(map) {
   return Object.values(map || {}).reduce((sum, n) => sum + n, 0);
 }
 
-function overallAccuracyPct(profile) {
+// Exported for Progress's Overview hero ("are you improving?"), which wants
+// the exact same accuracy definition achievements already use here — never
+// a second, slightly different accuracy calculation.
+export function overallAccuracyPct(profile) {
   const { receiveGraded, sendAttempts, receiveCorrect, sendCorrect } = totalCorrect(profile);
   const gradedAttempts = receiveGraded + sendAttempts;
   if (gradedAttempts === 0) return null;

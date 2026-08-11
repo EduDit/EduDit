@@ -1,17 +1,29 @@
-// Home dashboard: answers "what should I do next?" with one dominant
-// action, a compact progress summary, and quick access to everything else
-// for returning/experienced users who already know what they want.
+// Home dashboard: answers exactly one question — "what should I do now?" —
+// with one dominant hero action, full stop. Everything else (accuracy,
+// streak, level, today's practice) is deliberately secondary: a single
+// quiet stat line rather than a tile grid, linking out to Progress for
+// detail instead of restating it here. A short list of descriptive rows
+// lets a returning learner jump straight into a specific practice mode
+// without going through the recommendation at all.
 
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
-import { streakToClear } from "./learning.js";
 import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
-import { tierLetters, combinedSeen } from "./weakLetters.js";
+import { combinedSeen } from "./weakLetters.js";
 import { todayMs, streakDays } from "./dailyPractice.js";
 
 const DAILY_GOAL_MINUTES = 5;
 
+const PRACTICE_OPTIONS = [
+  { tab: "receive", title: "Receive", desc: "Hear Morse and identify the character." },
+  { tab: "send", title: "Send", desc: "See a character and key it." },
+  { tab: "listen", title: "Listen", desc: "Build your ear without answering." },
+  { tab: "callsigns", title: "Callsigns", desc: "Practice realistic radio exchanges." },
+];
+
 export class MainMenu {
+  static navId = "home";
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
@@ -20,91 +32,101 @@ export class MainMenu {
 
   _build() {
     const p = this.app.profile;
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-wide" });
 
-    const header = el("div", { class: "row header-row" });
-    header.appendChild(el("div", { class: "title", text: this.app.profileName, style: { margin: "0" } }));
-    header.appendChild(button("Switch profile", () => this._switch(), "btn-panel"));
-    wrap.appendChild(header);
+    wrap.appendChild(this._greeting());
 
     const rec = getRecommendation(p);
-    wrap.appendChild(this._heroCard(rec));
-    wrap.appendChild(this._statsSection(p, rec));
-    wrap.appendChild(this._todaysPracticeCard(p));
-    wrap.appendChild(this._quickAccess());
+    const grid = el("div", { class: "home-grid" });
+    const main = el("div", { class: "home-main" });
+    main.appendChild(this._heroCard(rec));
+    main.appendChild(this._quietStatLine(p, rec));
+    main.appendChild(this._todaysPracticeLine(p));
+    grid.appendChild(main);
+    grid.appendChild(this._journeyTeaser(p));
+    wrap.appendChild(grid);
+
+    wrap.appendChild(el("div", { class: "divider" }));
+    wrap.appendChild(this._practiceOptions());
 
     this.root.appendChild(wrap);
   }
 
-  // One dominant action, always labeled the same way — what changes is the
+  _greeting() {
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    return el("div", { style: { margin: "4px 0 24px" } }, [
+      el("h1", { class: "title", text: greeting, style: { margin: "0 0 4px" } }),
+      el("p", { class: "small muted", text: "Ready for another session?" }),
+    ]);
+  }
+
+  // One dominant action, always framed the same way — what changes is the
   // explanation underneath, generated fresh from the profile's real state
-  // every time this screen loads.
+  // every time this screen loads. Nothing else on the page competes with it.
   _heroCard(rec) {
     const card = el("div", { class: "card hero-card" });
-    card.appendChild(el("span", { class: "badge", text: "Today's Focus" }));
+    card.appendChild(el("span", { class: "badge", text: "Continue Your Journey" }));
     card.appendChild(el("p", { class: "heading", text: rec.title, style: { margin: "8px 0 2px" } }));
     card.appendChild(el("p", { class: "small muted", text: rec.subtitle }));
     card.appendChild(
-      button("Start Today's Training  ▶", () => this._startTraining(rec), "btn-accent btn-block")
+      button("Start Practice  ▶", () => this._startTraining(rec), "btn-accent btn-block")
     );
     return card;
   }
 
-  _statsSection(p, rec) {
-    const wrap = el("div", {});
+  // A single quiet line, not a stat grid — Home doesn't need to own this
+  // data, it just needs to point at where the full picture lives.
+  _quietStatLine(p, rec) {
     const level = rec.mode === "receive" ? p.receive_level : p.send_level;
-    const streak = rec.mode === "receive" ? p.receive_streak : p.send_streak;
-    const target = streakToClear(level);
-    const pool = codes.poolForLevel(level);
-
     const { attempts, misses } = this._overallAccuracy(p);
-    const accuracyText = attempts > 0 ? `${Math.round(((attempts - misses) / attempts) * 100)}%` : "—";
-    const needsAttention = tierLetters(p).needsWork.length;
+    const dayStreak = streakDays(p.daily_practice);
 
-    const grid = el("div", { class: "stat-grid" });
-    grid.appendChild(this._statTile("Level", String(level)));
-    grid.appendChild(this._statTile("Characters", `${pool.length}/${codes.LEARNING_ORDER.length}`));
-    grid.appendChild(this._statTile("Accuracy", accuracyText));
-    grid.appendChild(this._statTile("Streak", String(streak)));
-    grid.appendChild(this._statTile("Needs Attention", String(needsAttention)));
-    wrap.appendChild(grid);
+    const parts = [`Level ${level}`];
+    if (attempts > 0) parts.push(`${Math.round(((attempts - misses) / attempts) * 100)}% accuracy`);
+    if (dayStreak > 0) parts.push(`${dayStreak}-day streak`);
 
-    const progressWrap = el("div", { class: "progress" });
-    progressWrap.appendChild(el("div", { class: "progress-fill", style: { width: `${Math.min(100, (streak / target) * 100)}%` } }));
-    wrap.appendChild(progressWrap);
-    wrap.appendChild(
-      el("p", { class: "small muted", text: `Level ${level}: ${streak} / ${target} toward your next level` })
+    const line = el("div", { class: "quiet-stat-line" });
+    line.appendChild(el("span", { text: parts.join("   ·   ") }));
+    line.appendChild(
+      el("button", { class: "link-btn", text: "See full progress →", onclick: () => this._scoreboard() })
     );
-
-    return wrap;
+    return line;
   }
 
   // Encouraging, never punishing — a missed day just isn't counted; there's
   // no "goal missed" language and the streak simply resumes once practice
-  // does.
-  _todaysPracticeCard(p) {
+  // does. The day-streak itself is already in the quiet stat line above, so
+  // this line stays about today specifically.
+  _todaysPracticeLine(p) {
     const minutes = todayMs(p) / 60000;
     const pct = Math.min(100, (minutes / DAILY_GOAL_MINUTES) * 100);
-    const streak = streakDays(p.daily_practice);
 
-    const card = el("div", {});
-    card.appendChild(el("span", { class: "small muted", text: "Today's Practice" }));
+    const wrap = el("div", { style: { margin: "18px 0 0" } });
     const progressWrap = el("div", { class: "progress" });
     progressWrap.appendChild(el("div", { class: "progress-fill", style: { width: `${pct}%` } }));
-    card.appendChild(progressWrap);
-
-    const minutesText = minutes >= 1 ? `${minutes.toFixed(1).replace(/\.0$/, "")} min today` : "Not yet today — any time counts";
-    const streakText = streak > 0 ? `  •  ${streak}-day streak` : "";
-    card.appendChild(el("p", { class: "small muted", text: `${minutesText}${streakText}` }));
-
-    return card;
+    wrap.appendChild(progressWrap);
+    const minutesText =
+      minutes >= 1 ? `${minutes.toFixed(1).replace(/\.0$/, "")} min today` : "Not yet today — any time counts";
+    wrap.appendChild(el("p", { class: "small muted", text: minutesText, style: { margin: "4px 0 0" } }));
+    return wrap;
   }
 
-  _statTile(label, value) {
-    return el("div", { class: "stat-tile" }, [
-      el("span", { class: "stat-value", text: value }),
-      el("span", { class: "stat-label", text: label }),
-    ]);
+  // Secondary, visually lighter than the hero — "show me what I've learned
+  // and what's next," in Journey's own words, not a duplicate stat block.
+  _journeyTeaser(p) {
+    const level = Math.max(p.receive_level, p.send_level);
+    const pool = codes.poolForLevel(level);
+    const aside = el("div", { class: "home-aside section" });
+    aside.appendChild(el("p", { class: "section-title", text: "Your Journey" }));
+    aside.appendChild(
+      el("p", {
+        class: "small muted",
+        text: `${pool.length} of ${codes.LEARNING_ORDER.length} characters learned so far.`,
+      })
+    );
+    aside.appendChild(button("View Journey  ▶", () => this._journey(), "btn-panel btn-block"));
+    return aside;
   }
 
   _overallAccuracy(p) {
@@ -119,35 +141,30 @@ export class MainMenu {
     return { attempts, misses };
   }
 
-  // Secondary, clearly less prominent than the hero card — this is what
-  // keeps a returning/experienced user fast: one click to any mode without
-  // going through the recommendation at all.
-  _quickAccess() {
-    const wrap = el("div", {});
-    wrap.appendChild(el("p", { class: "small muted", text: "Or choose what to practice:" }));
+  // Descriptive rows, not a wall of buttons (item 16) — each names the mode
+  // and what it's for, so a first-time visitor understands Receive vs. Send
+  // vs. Listen vs. Callsigns without having to try each one. Routes through
+  // PracticeHub (not a direct deep link) since this is open-ended browsing,
+  // not a contextual "practice this one thing and come back" flow.
+  _practiceOptions() {
+    const wrap = el("div", { class: "section" });
+    wrap.appendChild(el("p", { class: "section-title", text: "Or choose what to practice" }));
 
-    const row1 = el("div", { class: "button-row" });
-    row1.appendChild(button("Receive Morse", () => this._receive(), "btn-panel"));
-    row1.appendChild(button("Send Morse", () => this._send(), "btn-panel"));
-    wrap.appendChild(row1);
-
-    const row2 = el("div", { class: "button-row" });
-    row2.appendChild(button("Journey", () => this._journey(), "btn-panel"));
-    row2.appendChild(button("Lessons", () => this._lessons(), "btn-panel"));
-    wrap.appendChild(row2);
-
-    // Listen and Callsigns sit together — both are exploratory, non-leveling
-    // modes, unlike the leveled Receive/Send practice above.
-    const row3 = el("div", { class: "button-row" });
-    row3.appendChild(button("Listen", () => this._listen(), "btn-panel"));
-    row3.appendChild(button("Callsigns", () => this._callsigns(), "btn-panel"));
-    wrap.appendChild(row3);
-
-    const row4 = el("div", { class: "button-row" });
-    row4.appendChild(button("Progress", () => this._scoreboard(), "btn-panel"));
-    row4.appendChild(button("Settings", () => this._settings(), "btn-panel"));
-    wrap.appendChild(row4);
-
+    for (const opt of PRACTICE_OPTIONS) {
+      wrap.appendChild(
+        el(
+          "button",
+          { class: "option-row", onclick: () => this._practice(opt.tab) },
+          [
+            el("span", {}, [
+              el("span", { class: "option-row-title", text: opt.title }),
+              el("span", { class: "option-row-desc", text: opt.desc }),
+            ]),
+            el("span", { class: "option-row-arrow", "aria-hidden": "true", text: "›" }),
+          ]
+        )
+      );
+    }
     return wrap;
   }
 
@@ -155,42 +172,16 @@ export class MainMenu {
     startRecommendedTraining(this.app, rec);
   }
 
-  _receive() {
-    import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice));
-  }
-
-  _send() {
-    import("./sendPractice.js").then((m) => this.app.show(m.SendPractice));
-  }
-
-  _settings() {
-    import("./settings.js").then((m) => this.app.show(m.Settings));
+  _practice(tab) {
+    import("./practiceHub.js").then((m) => this.app.show(m.PracticeHub, { tab }));
   }
 
   _scoreboard() {
     import("./scoreboard.js").then((m) => this.app.show(m.Scoreboard));
   }
 
-  _lessons() {
-    import("./lessons.js").then((m) => this.app.show(m.Lessons));
-  }
-
   _journey() {
     import("./journey.js").then((m) => this.app.show(m.Journey));
-  }
-
-  _listen() {
-    import("./listenPractice.js").then((m) => this.app.show(m.ListenPractice));
-  }
-
-  _callsigns() {
-    import("./callsignPractice.js").then((m) => this.app.show(m.CallsignPractice));
-  }
-
-  _switch() {
-    this.app.profileName = null;
-    this.app.profile = null;
-    import("./profileSelect.js").then((m) => this.app.show(m.ProfileSelect));
   }
 
   destroy() {}

@@ -1,12 +1,14 @@
-// Morse Journey: a simple visual walk through the Morse alphabet in the
-// order it's learned — not a data table. Each character shows an icon+color
-// state (never color alone) so the state reads even without knowing the
-// internal terminology. Tapping one reveals its details.
+// Morse Journey: a visual walk through the Morse alphabet, grouped into
+// Learn / Practice / Master / Advance bands by how far along each character
+// is — not a flat data table, and not one undifferentiated grid. Each
+// character shows an icon+color state (never color alone) so the state
+// reads even without knowing the internal terminology. Tapping one reveals
+// its details in a side panel (desktop) or inline below (mobile).
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, attachArrowNav } from "./dom.js";
+import { el, button, morseGlyphs, attachArrowNav, pageHeader } from "./dom.js";
 import { stateFor } from "./characterState.js";
-import { combinedSeen, tierLetters } from "./weakLetters.js";
+import { combinedSeen, combinedFluency, tierLetters } from "./weakLetters.js";
 
 const ICONS = { strong: "✓", practicing: "●", learning: "○", locked: "🔒" };
 const STATE_LABEL = {
@@ -16,7 +18,20 @@ const STATE_LABEL = {
   locked: "Not unlocked yet",
 };
 
+// Reading order matches the brief's own framing: a character starts
+// unlocked-but-untouched (Learn), gets attempted (Practice), becomes
+// accurate and fast (Master) — and everything still locked is what's
+// coming up (Advance). Bands with nothing in them are simply skipped.
+const BANDS = [
+  { state: "learning", title: "Learn", desc: "Unlocked, not started yet." },
+  { state: "practicing", title: "Practice", desc: "You've started — keep going." },
+  { state: "strong", title: "Master", desc: "You know these well." },
+  { state: "locked", title: "Advance", desc: "Coming up next." },
+];
+
 export class Journey {
+  static navId = "journey";
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
@@ -26,45 +41,53 @@ export class Journey {
 
   _build() {
     const p = this.app.profile;
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-standard" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Morse Journey" }));
-    wrap.appendChild(top);
-
+    wrap.appendChild(
+      pageHeader({
+        title: "Journey",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
+    );
     wrap.appendChild(
       el("p", {
         class: "small muted",
-        text: "Your path through the Morse alphabet, in the order you learn it. Tap a character for details.",
+        text: "See what you've learned and what's next. Tap a character for details.",
       })
     );
 
     const level = Math.max(p.receive_level, p.send_level);
     const seen = combinedSeen(p);
     const mistakes = p.mistakes || {};
+    const fluency = combinedFluency(p);
     const weakChars = new Set(tierLetters(p).needsWork.map((r) => r.ch));
 
-    const grid = el("div", { class: "journey-grid" });
+    const grouped = { learning: [], practicing: [], strong: [], locked: [] };
     for (const ch of codes.LEARNING_ORDER) {
-      const state = stateFor(ch, level, seen, mistakes);
-      const isSelected = this.selected === ch;
-      grid.appendChild(
-        el("button", {
-          class: `state-badge state-${state}${isSelected ? " state-selected" : ""}`,
-          "aria-label": `${ch}: ${STATE_LABEL[state]}`,
-          "aria-pressed": String(isSelected),
-          text: state === "locked" ? ICONS.locked : `${ICONS[state]} ${ch}`,
-          onclick: () => this._select(ch),
-        })
+      grouped[stateFor(ch, level, seen, mistakes, fluency[ch])].push(ch);
+    }
+
+    const layout = el("div", { class: "journey-layout" });
+
+    const bandsWrap = el("div", { class: "journey-bands" });
+    for (const band of BANDS) {
+      const chars = grouped[band.state];
+      if (chars.length === 0) continue;
+      bandsWrap.appendChild(this._band(band, chars));
+    }
+    layout.appendChild(bandsWrap);
+
+    const detailWrap = el("div", { class: "journey-detail-panel" });
+    if (this.selected) {
+      detailWrap.appendChild(this._detail(this.selected, level, seen, mistakes, weakChars, fluency));
+    } else {
+      detailWrap.appendChild(
+        el("p", { class: "journey-detail-placeholder", text: "Tap a character above to see its details." })
       );
     }
-    attachArrowNav(grid);
-    wrap.appendChild(grid);
+    layout.appendChild(detailWrap);
 
-    if (this.selected) {
-      wrap.appendChild(this._detail(this.selected, level, seen, mistakes, weakChars));
-    }
+    wrap.appendChild(layout);
 
     wrap.appendChild(el("div", { class: "divider" }));
     wrap.appendChild(button("Open Lessons  ▶", () => this._lessons(), "btn-panel btn-block"));
@@ -72,8 +95,31 @@ export class Journey {
     this.root.appendChild(wrap);
   }
 
-  _detail(ch, level, seen, mistakes, weakChars) {
-    const state = stateFor(ch, level, seen, mistakes);
+  _band(band, chars) {
+    const section = el("div", { class: "journey-band" });
+    section.appendChild(el("p", { class: "journey-band-title", text: band.title }));
+    section.appendChild(el("p", { class: "journey-band-desc", text: band.desc }));
+
+    const grid = el("div", { class: "journey-grid" });
+    for (const ch of chars) {
+      const isSelected = this.selected === ch;
+      grid.appendChild(
+        el("button", {
+          class: `state-badge state-${band.state}${isSelected ? " state-selected" : ""}`,
+          "aria-label": `${ch}: ${STATE_LABEL[band.state]}`,
+          "aria-pressed": String(isSelected),
+          text: band.state === "locked" ? ICONS.locked : `${ICONS[band.state]} ${ch}`,
+          onclick: () => this._select(ch),
+        })
+      );
+    }
+    attachArrowNav(grid);
+    section.appendChild(grid);
+    return section;
+  }
+
+  _detail(ch, level, seen, mistakes, weakChars, fluency) {
+    const state = stateFor(ch, level, seen, mistakes, fluency[ch]);
     const attempts = seen[ch] || 0;
     const misses = mistakes[ch] || 0;
     const pct = attempts > 0 ? Math.round(((attempts - misses) / attempts) * 100) : null;

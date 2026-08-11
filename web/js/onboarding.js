@@ -8,6 +8,9 @@ import { el, button } from "./dom.js";
 const STEPS = 3;
 
 export class Onboarding {
+  // Pre-profile-home state — renders its own centered layout, not the app shell.
+  static chromeless = true;
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
@@ -16,7 +19,7 @@ export class Onboarding {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen center" });
+    const wrap = el("div", { class: "screen view-focused center" });
 
     const top = el("div", { class: "row header-row" });
     top.appendChild(el("span", { class: "heading", text: "Welcome to DitDash" }));

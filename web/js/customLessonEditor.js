@@ -4,7 +4,7 @@
 // session-only scoring, no effect on level/streak.
 
 import * as codes from "./codes.js";
-import { el, button, QWERTY_ROWS } from "./dom.js";
+import { el, button, QWERTY_ROWS, pageHeader } from "./dom.js";
 
 const MIN_CHARS = 1;
 
@@ -23,12 +23,15 @@ export class CustomLessonEditor {
   }
 
   _build() {
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-standard" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Lessons", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: this.existing ? "Edit Lesson" : "New Lesson" }));
-    wrap.appendChild(top);
+    wrap.appendChild(
+      pageHeader({
+        eyebrow: "Lessons",
+        title: this.existing ? "Edit Lesson" : "New Lesson",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
+    );
 
     wrap.appendChild(
       el("p", { class: "small muted", text: "Name it, then tap the letters and numbers to include." })

@@ -1,46 +1,121 @@
-// Lessons: three ways to drill specific characters without touching level
-// or streak progress — practice here is scored only for the current
-// session.
-//
-// - Weak Letters: a tiered, auto-updating view (Needs Work / Getting
-//   Better / Strong) built from tierLetters() in weakLetters.js — nothing
-//   to edit or delete, it just recomputes on every visit.
-// - Custom Lessons: hand-picked sets of characters the learner saved.
-// - Unlocked Lessons: every batch of letters introduced so far — lets a
-//   learner jump back into any of them for review.
+// Lessons: "what should I work on?" leads the page as one hero (not a tab —
+// Recommended and Weak Letters are the same underlying question, so they're
+// folded together using the same recommendation engine Home and Session
+// Summary already use), then Unlocked/Custom as the two genuinely distinct
+// browsing actions a learner would go looking for separately. Practice here
+// is scored only for the current session — it never touches level/streak.
 
 import * as codes from "./codes.js";
-import { el, button } from "./dom.js";
+import { el, button, tabBar, pageHeader } from "./dom.js";
 import { tierLetters } from "./weakLetters.js";
+import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { confirmDialog } from "./dialog.js";
 
+const TABS = [
+  { id: "unlocked", label: "Unlocked" },
+  { id: "custom", label: "Custom" },
+];
+
 export class Lessons {
+  static navId = "lessons";
+
   constructor(root, app) {
     this.root = root;
     this.app = app;
+    this.tab = "unlocked";
     this._build();
   }
 
   _build() {
     const p = this.app.profile;
-    const wrap = el("div", { class: "screen" });
+    const wrap = el("div", { class: "screen view-standard" });
 
-    const top = el("div", { class: "row header-row" });
-    top.appendChild(button("< Menu", () => this.goBack()));
-    top.appendChild(el("span", { class: "heading", text: "Lessons" }));
-    wrap.appendChild(top);
-
-    wrap.appendChild(el("p", { class: "small muted", text: "Practice specific characters." }));
-    wrap.appendChild(button("View Morse Journey  ▶", () => this._journey(), "btn-panel btn-block"));
     wrap.appendChild(
-      button("Callsign & QSO Practice  ▶", () => this._callsigns(), "btn-panel btn-block")
+      pageHeader({
+        title: "Lessons",
+        actions: [button("Back", () => this.goBack(), "btn-panel btn-block-inline")],
+      })
+    );
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "Practice specific characters without affecting your level.",
+      })
     );
 
-    wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(this._weakLettersSection(p));
+    wrap.appendChild(this._focusHero(p));
 
     wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(el("p", { class: "heading", text: "Custom Lessons" }));
+    wrap.appendChild(tabBar(TABS, this.tab, (id) => this._setTab(id)));
+    wrap.appendChild(this.tab === "unlocked" ? this._unlockedPanel(p) : this._customPanel(p));
+
+    this.root.appendChild(wrap);
+  }
+
+  // "What should I work on?" — the same recommendation engine Home and
+  // Session Summary use, so all three can never disagree. Weak letters are
+  // already folded into rec.subtitle when any exist (see recommendation.js)
+  // rather than presented as a separate destination.
+  _focusHero(p) {
+    const rec = getRecommendation(p);
+    const card = el("div", { class: "card hero-card" });
+    card.appendChild(el("span", { class: "badge", text: "Focus On This Next" }));
+    card.appendChild(el("p", { class: "heading", text: rec.title, style: { margin: "8px 0 2px" } }));
+    card.appendChild(el("p", { class: "small muted", text: rec.subtitle }));
+    card.appendChild(
+      button("Start Practice  ▶", () => startRecommendedTraining(this.app, rec, { returnTo: "lessons" }), "btn-accent btn-block")
+    );
+
+    const tiers = tierLetters(p);
+    const toReview = [...tiers.needsWork, ...tiers.gettingBetter];
+    if (toReview.length > 0 && rec.reason !== "weak") {
+      // The recommendation alternates Receive/Send and may be about level
+      // progress rather than weak letters right now — still surface a
+      // direct shortcut to drill them if any exist.
+      card.appendChild(
+        button(
+          "Practice Weak Letters  ▶",
+          () => this._weakPractice("receive", toReview.map((r) => r.ch)),
+          "btn-panel btn-block"
+        )
+      );
+    }
+    return card;
+  }
+
+  _weakPractice(mode, chars) {
+    const options = { lessonChars: chars, lessonLabel: "Weak Letters", returnTo: "lessons" };
+    if (mode === "receive") {
+      import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
+    } else {
+      import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
+    }
+  }
+
+  _setTab(id) {
+    if (id === this.tab) return;
+    this.tab = id;
+    this.root.innerHTML = "";
+    this._build();
+  }
+
+  _unlockedPanel(p) {
+    const wrap = el("div", {});
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "Review any lesson you've already reached — this won't affect your level.",
+      })
+    );
+    const highestUnlocked = Math.max(p.receive_level, p.send_level);
+    for (let n = 1; n <= highestUnlocked; n++) {
+      wrap.appendChild(this._lessonRow(n, p));
+    }
+    return wrap;
+  }
+
+  _customPanel(p) {
+    const wrap = el("div", {});
     wrap.appendChild(
       el("p", {
         class: "small muted",
@@ -56,92 +131,7 @@ export class Lessons {
       }
     }
     wrap.appendChild(button("+ New custom lesson", () => this._newCustomLesson(), "btn-panel btn-block"));
-
-    wrap.appendChild(el("div", { class: "divider" }));
-    wrap.appendChild(el("p", { class: "heading", text: "Unlocked Lessons" }));
-    wrap.appendChild(
-      el("p", { class: "small muted", text: "Review any lesson you've already reached — this won't affect your level." })
-    );
-
-    const highestUnlocked = Math.max(p.receive_level, p.send_level);
-    for (let n = 1; n <= highestUnlocked; n++) {
-      wrap.appendChild(this._lessonRow(n, p));
-    }
-
-    this.root.appendChild(wrap);
-  }
-
-  // Auto-updating, tiered ranking — recomputed from tierLetters() on every
-  // visit rather than saved, so it can't drift out of date and there's
-  // nothing to edit or delete.
-  _weakLettersSection(p) {
-    const wrap = el("div", {});
-    wrap.appendChild(el("p", { class: "heading", text: "Weak Letters" }));
-
-    const tiers = tierLetters(p);
-    const toReview = [...tiers.needsWork, ...tiers.gettingBetter];
-
-    if (toReview.length === 0) {
-      const hasAnyData = tiers.strong.length > 0;
-      wrap.appendChild(
-        el("p", {
-          class: "small muted",
-          text: hasAnyData
-            ? "Nothing needs work right now — nice and steady. Ready for more characters?"
-            : "Keep practicing and your weak letters will show up here.",
-        })
-      );
-      return wrap;
-    }
-
-    wrap.appendChild(
-      el("p", { class: "small muted", text: "Ranked worst to best — spend a few minutes on the top group." })
-    );
-    if (tiers.needsWork.length) wrap.appendChild(this._tierGroup("Needs Work", tiers.needsWork, "bad"));
-    if (tiers.gettingBetter.length) wrap.appendChild(this._tierGroup("Getting Better", tiers.gettingBetter, ""));
-    if (tiers.strong.length) wrap.appendChild(this._tierGroup("Strong", tiers.strong, "good"));
-
-    const chars = toReview.map((r) => r.ch);
-    wrap.appendChild(
-      button("Practice Weak Letters  ▶", () => this._weakPractice("receive", chars), "btn-accent btn-block")
-    );
-
     return wrap;
-  }
-
-  _tierGroup(label, rows, kind) {
-    const group = el("div", { class: "card" });
-    group.appendChild(el("span", { class: "small muted", text: label.toUpperCase() }));
-    const list = el("div", { class: "accuracy-list" });
-    for (const r of rows) {
-      const item = el("div", { class: "accuracy-row" });
-      item.appendChild(el("span", { class: "mono accuracy-char", text: r.ch }));
-      const bar = el("div", { class: "accuracy-bar" });
-      bar.appendChild(el("div", { class: `accuracy-bar-fill ${kind}`.trim(), style: { width: `${r.pct}%` } }));
-      item.appendChild(bar);
-      item.appendChild(el("span", { class: `mono accuracy-pct ${kind}`.trim(), text: `${r.pct}%` }));
-      item.appendChild(el("span", { class: "small muted accuracy-count", text: `${r.attempts - r.misses}/${r.attempts}` }));
-      list.appendChild(item);
-    }
-    group.appendChild(list);
-    return group;
-  }
-
-  _weakPractice(mode, chars) {
-    const options = { lessonChars: chars, lessonLabel: "Weak Letters", returnTo: "lessons" };
-    if (mode === "receive") {
-      import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
-    } else {
-      import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
-    }
-  }
-
-  _journey() {
-    import("./journey.js").then((m) => this.app.show(m.Journey));
-  }
-
-  _callsigns() {
-    import("./callsignPractice.js").then((m) => this.app.show(m.CallsignPractice, { returnTo: "lessons" }));
   }
 
   _customLessonRow(lesson) {
