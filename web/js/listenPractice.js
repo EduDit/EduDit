@@ -9,16 +9,14 @@ import { clamp } from "./learning.js";
 
 const MIN_REPEATS = 1;
 const MAX_REPEATS = 10;
-// Pause between repeats of the same letter and between two different
-// letters — both adjustable in the UI; these are just the fallback values
-// for profiles saved before those settings existed. Repeats need their own
-// minimum well above 1 unit: a dot-dot-dot with only an intra-character gap
-// between reps is indistinguishable from S, so a too-short repeat gap makes
-// E sound like S, N sound like T-T (or worse), and so on.
+// Pause between repeats of the same letter — fixed, not adjustable in the
+// UI. Needs to stay well above 1 unit: a dot-dot-dot with only an
+// intra-character gap between reps is indistinguishable from S, so a
+// too-short repeat gap makes E sound like S, N sound like T-T (or worse),
+// and so on.
 const DEFAULT_REPEAT_GAP_UNITS = 6;
+// Pause between two different letters — adjustable in the UI below.
 const DEFAULT_LETTER_GAP_UNITS = 7;
-const MIN_REPEAT_GAP_UNITS = 4;
-const MAX_REPEAT_GAP_UNITS = 30;
 const MIN_GAP_UNITS = 2;
 const MAX_GAP_UNITS = 30;
 
@@ -68,7 +66,6 @@ export class ListenPractice {
     wrap.appendChild(this.status);
 
     wrap.appendChild(this._repeatStepper());
-    wrap.appendChild(this._repeatGapStepper());
     wrap.appendChild(this._gapStepper());
     wrap.appendChild(this._speakToggleRow());
 
@@ -120,38 +117,10 @@ export class ListenPractice {
   // The gap between two plays of the SAME letter — separate from the pause
   // between different letters below. Too short and repeated dots/dashes
   // blur into a different character entirely (three "E"s with no real gap
-  // between them just sounds like "S"), so this gets its own control and
-  // its own higher floor.
-  _repeatGapStepper() {
-    const frame = el("div", { class: "slider-frame" });
-    const row = el("div", { class: "row" });
-    row.appendChild(el("span", { text: "Pause between repeats" }));
-
-    const stepRow = el("div", { class: "entry-row" });
-    const minus = button("−", () => this._changeRepeatGap(-1), "btn-panel");
-    minus.setAttribute("aria-label", "Decrease pause between repeats");
-    this.repeatGapLbl = el("span", { class: "good mono", text: String(this._repeatGapUnits()) });
-    const plus = button("+", () => this._changeRepeatGap(1), "btn-panel");
-    plus.setAttribute("aria-label", "Increase pause between repeats");
-    stepRow.appendChild(minus);
-    stepRow.appendChild(this.repeatGapLbl);
-    stepRow.appendChild(plus);
-    row.appendChild(stepRow);
-
-    frame.appendChild(row);
-    return frame;
-  }
-
+  // between them just sounds like "S"), so this stays fixed rather than
+  // being user-adjustable.
   _repeatGapUnits() {
     return this.app.profile.settings.listenRepeatGapUnits || DEFAULT_REPEAT_GAP_UNITS;
-  }
-
-  _changeRepeatGap(delta) {
-    const s = this.app.profile.settings;
-    const next = clamp(this._repeatGapUnits() + delta, MIN_REPEAT_GAP_UNITS, MAX_REPEAT_GAP_UNITS);
-    s.listenRepeatGapUnits = next;
-    this.app.saveProfile();
-    this.repeatGapLbl.textContent = String(next);
   }
 
   _gapStepper() {
