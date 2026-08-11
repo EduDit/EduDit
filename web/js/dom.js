@@ -86,3 +86,30 @@ export function morseGlyphs(pattern, kind = "") {
   }
   return wrap;
 }
+
+// Roving arrow-key navigation for a dense group of buttons (a character
+// grid, an on-screen keyboard, a tab pair) — Left/Right move focus to the
+// previous/next enabled match in DOM order, Up/Down move by `columns` (if
+// given) or behave like Left/Right otherwise, wrapping at the ends. Purely
+// additive: only acts (and only calls preventDefault()) when the focused
+// element inside `container` actually matches `selector` and focus actually
+// moves, so it never interferes with normal Tab order, the app-wide Esc
+// handler, or typing in a text field.
+export function attachArrowNav(container, { selector = "button:not(:disabled)", columns } = {}) {
+  container.addEventListener("keydown", (e) => {
+    const ARROW_STEPS = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -(columns || 1), ArrowDown: columns || 1 };
+    const step = ARROW_STEPS[e.key];
+    if (!step) return;
+
+    const items = Array.from(container.querySelectorAll(selector));
+    const current = document.activeElement;
+    const index = items.indexOf(current);
+    if (index === -1) return;
+
+    const next = items[(index + step + items.length) % items.length];
+    if (!next || next === current) return;
+
+    e.preventDefault();
+    next.focus();
+  });
+}

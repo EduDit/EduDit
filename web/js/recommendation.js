@@ -57,3 +57,21 @@ function pickMode(profile) {
   const sendProgress = profile.send_streak / streakToClear(profile.send_level);
   return sendProgress < receiveProgress ? "send" : "receive";
 }
+
+// Opens whichever practice screen a recommendation (from getRecommendation()
+// above, or a caller-built object with the same {mode, lessonChars, title}
+// shape) points at — shared by Home's "Start Today's Training" and Session
+// Summary's "Continue Training" so both buttons behave identically instead
+// of each screen duplicating this dispatch.
+export function startRecommendedTraining(app, rec, { returnTo = "mainMenu" } = {}) {
+  const options = { returnTo };
+  if (rec.lessonChars) {
+    options.lessonChars = rec.lessonChars;
+    options.lessonLabel = rec.title;
+  }
+  if (rec.mode === "receive") {
+    import("./receivePractice.js").then((m) => app.show(m.ReceivePractice, options));
+  } else {
+    import("./sendPractice.js").then((m) => app.show(m.SendPractice, options));
+  }
+}

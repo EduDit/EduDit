@@ -134,6 +134,12 @@ web/                           browser rebuild of the app (see web/README.md)
     receivePractice.js         listen-and-tap drill
     sendPractice.js            key-it-out drill
     listenPractice.js          "listen only" playback mode
+    callsignPractice.js        realistic callsign/QSO copy practice
+    callsigns.js               callsign/exchange content generator
+    sessionSummary.js          end-of-session recap + recommended next step
+    teachingCard.js            shared "new character" teaching card
+    farnsworth.js              Farnsworth spacing timeline math
+    backup.js                  profile export/import (backup & restore)
     settings.js                per-profile settings
     scoreboard.js              session score tracking
     audio.js                   tone playback via Web Audio

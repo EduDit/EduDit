@@ -1,11 +1,19 @@
 // Receive Practice: hear a tone, tap the matching character.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, showToast, QWERTY_ROWS, isDigit } from "./dom.js";
+import { el, button, morseGlyphs, showToast, QWERTY_ROWS, isDigit, attachArrowNav } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
 import { explainCharacter } from "./explainSelection.js";
 import { evaluateAchievements } from "./achievements.js";
 import { recordActivity } from "./dailyPractice.js";
+import { newCharacterCard } from "./teachingCard.js";
+
+// A session recap only means something once a few rounds have actually
+// happened — below this, a manual exit ("< Menu"/Esc) just navigates back
+// directly instead of showing Session Summary. A level-up always shows it
+// regardless of this threshold (streakToClear can be as low as 2 at early
+// levels, so a legitimate level-up can happen in fewer rounds than this).
+const SUMMARY_MIN_ROUNDS = 3;
 
 const WRONG_PENALTY = 2;
 // A miss streak has to reach this length before clearing it counts as a
@@ -33,6 +41,10 @@ export class ReceivePractice {
     this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
+    // Tracked in every round (not just lesson-mode) so Session Summary has
+    // something real to show regardless of how the session ends.
+    this.sessionChars = new Set();
+    this.sessionMisses = {};
     this.target = null;
     this.answered = false;
     this.autoHint = false;
@@ -110,6 +122,7 @@ export class ReceivePractice {
       keyboard.appendChild(rowEl);
       if (row.every(isDigit)) this.digitsRow = rowEl;
     }
+    attachArrowNav(keyboard);
     return keyboard;
   }
 
@@ -176,7 +189,12 @@ export class ReceivePractice {
       this.status.className = "heading status center good";
       this.keyButtons[this.target].classList.add("key-hint");
       this.teachCard.style.display = "";
-      this.teachCard.appendChild(this._newCharacterCard(this.target));
+      this.teachCard.appendChild(
+        newCharacterCard(this.target, {
+          onPlay: () => this.play(),
+          onPractice: () => this._practiceThisChar(this.target),
+        })
+      );
     } else if (this.autoHint) {
       this.status.textContent = `This is ${this.target}`;
       this.status.className = "heading status center good";
@@ -187,27 +205,6 @@ export class ReceivePractice {
       this.status.className = "heading status center";
     }
     this._timers.push(setTimeout(() => this.play(), 350));
-  }
-
-  // A dedicated first-exposure card (spec: character, pattern, a rhythm
-  // phrasing, replay, and a way to drill just this one) — distinct from the
-  // plain glyph hint a miss-streak refresher gets, since this is the
-  // learner's very first look at the character at all.
-  _newCharacterCard(ch) {
-    const card = el("div", { class: "card pop-in" });
-    card.appendChild(el("span", { class: "badge", text: "New Character" }));
-    card.appendChild(el("div", { class: "big-char", text: ch, style: { margin: "6px 0" } }));
-    const glyphRow = el("div", { class: "hint-viz" });
-    glyphRow.appendChild(morseGlyphs(codes.MORSE[ch], "good"));
-    card.appendChild(glyphRow);
-    card.appendChild(
-      el("p", { class: "small muted center", text: codes.rhythmPhrase(codes.MORSE[ch]) })
-    );
-    const row = el("div", { class: "button-row" });
-    row.appendChild(button("Hear it  ▶", () => this.play(), "btn-panel"));
-    row.appendChild(button(`Practice ${ch}`, () => this._practiceThisChar(ch), "btn-accent"));
-    card.appendChild(row);
-    return card;
   }
 
   _practiceThisChar(ch) {
@@ -289,23 +286,32 @@ export class ReceivePractice {
     if (this.answered) return;
     this.answered = true;
     const p = this.app.profile;
+    const s = p.settings;
+    this.sessionTotal += 1;
+    this.sessionChars.add(this.target);
     if (ch === this.target) {
+      this.sessionCorrect += 1;
       const priorMissStreak = p.receive_miss_streak[this.target] || 0;
       p.receive_miss_streak[this.target] = 0;
       if (priorMissStreak >= GETTING_STRONGER_THRESHOLD) {
         showToast(`${this.target} is getting stronger — nice work!`);
       }
+      let leveledUp = false;
+      let unlockedChars = [];
       if (this.lessonChars) {
-        this.sessionCorrect += 1;
-        this.sessionTotal += 1;
         this._setStatus("Correct!", "good");
       } else {
         p.receive_streak += 1;
         const target = streakToClear(p.receive_level);
         if (p.receive_streak >= target) {
           p.receive_streak = 0;
+          const priorLevel = p.receive_level;
           if (p.receive_level < codes.MAX_LEVEL) {
             p.receive_level += 1;
+            leveledUp = true;
+            unlockedChars = codes
+              .poolForLevel(p.receive_level)
+              .slice(codes.poolForLevel(priorLevel).length);
             this._setStatus("Level up! New characters unlocked.", "good");
           } else {
             this._setStatus("All characters mastered!", "good");
@@ -317,19 +323,23 @@ export class ReceivePractice {
       this._checkAchievements();
       this.app.saveProfile();
       this._updateMeta();
-      this._timers.push(setTimeout(() => this.nextRound(), 750));
+      if (leveledUp) {
+        this._timers.push(setTimeout(() => this._showSummary({ leveledUp, unlockedChars }), 900));
+      } else {
+        this._timers.push(setTimeout(() => this.nextRound(), 750));
+      }
     } else {
       p.receive_miss_streak[this.target] = (p.receive_miss_streak[this.target] || 0) + 1;
       p.mistakes = p.mistakes || {};
       p.mistakes[this.target] = (p.mistakes[this.target] || 0) + 1;
       p.receive_mistakes = p.receive_mistakes || {};
       p.receive_mistakes[this.target] = (p.receive_mistakes[this.target] || 0) + 1;
-      if (this.lessonChars) {
-        this.sessionTotal += 1;
-      } else {
+      this.sessionMisses[this.target] = (this.sessionMisses[this.target] || 0) + 1;
+      if (!this.lessonChars) {
         p.receive_streak = Math.max(0, p.receive_streak - WRONG_PENALTY);
       }
       this._setStatus(`It was  ${this.target}`, "bad");
+      this.app.audio.playIncorrectCue(s.volume);
       this.hintViz.innerHTML = "";
       this.hintViz.appendChild(morseGlyphs(codes.MORSE[this.target], "bad"));
       this._checkAchievements();
@@ -364,6 +374,11 @@ export class ReceivePractice {
       this.status.classList.remove("pulse-good");
       void this.status.offsetWidth;
       this.status.classList.add("pulse-good");
+    } else if (kind === "bad") {
+      // Same restart trick as pulse-good above, for the wrong-answer shake.
+      this.status.classList.remove("shake-bad");
+      void this.status.offsetWidth;
+      this.status.classList.add("shake-bad");
     }
   }
 
@@ -383,6 +398,14 @@ export class ReceivePractice {
   }
 
   goBack() {
+    if (this.sessionTotal >= SUMMARY_MIN_ROUNDS) {
+      this._showSummary();
+    } else {
+      this._navigateBack();
+    }
+  }
+
+  _navigateBack() {
     if (this.returnTo === "journey") {
       import("./journey.js").then((m) => this.app.show(m.Journey));
     } else if (this.returnTo === "lessons") {
@@ -390,6 +413,23 @@ export class ReceivePractice {
     } else {
       import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
     }
+  }
+
+  // extra.leveledUp bypasses the SUMMARY_MIN_ROUNDS check entirely — a
+  // level-up is always shown, since streakToClear can be as low as 2 at
+  // early levels, so goBack()'s "was this a real session?" threshold
+  // doesn't apply to it.
+  _showSummary(extra = {}) {
+    const stats = {
+      correct: this.sessionCorrect,
+      total: this.sessionTotal,
+      chars: this.sessionChars,
+      misses: this.sessionMisses,
+      leveledUp: false,
+      unlockedChars: [],
+      ...extra,
+    };
+    import("./sessionSummary.js").then((m) => this.app.show(m.SessionSummary, { mode: "receive", stats }));
   }
 
   destroy() {

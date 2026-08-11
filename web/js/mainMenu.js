@@ -5,7 +5,7 @@
 import * as codes from "./codes.js";
 import { el, button } from "./dom.js";
 import { streakToClear } from "./learning.js";
-import { getRecommendation } from "./recommendation.js";
+import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { tierLetters, combinedSeen } from "./weakLetters.js";
 import { todayMs, streakDays } from "./dailyPractice.js";
 
@@ -134,28 +134,25 @@ export class MainMenu {
     const row2 = el("div", { class: "button-row" });
     row2.appendChild(button("Journey", () => this._journey(), "btn-panel"));
     row2.appendChild(button("Lessons", () => this._lessons(), "btn-panel"));
-    row2.appendChild(button("Listen", () => this._listen(), "btn-panel"));
     wrap.appendChild(row2);
 
+    // Listen and Callsigns sit together — both are exploratory, non-leveling
+    // modes, unlike the leveled Receive/Send practice above.
     const row3 = el("div", { class: "button-row" });
-    row3.appendChild(button("Progress", () => this._scoreboard(), "btn-panel"));
-    row3.appendChild(button("Settings", () => this._settings(), "btn-panel"));
+    row3.appendChild(button("Listen", () => this._listen(), "btn-panel"));
+    row3.appendChild(button("Callsigns", () => this._callsigns(), "btn-panel"));
     wrap.appendChild(row3);
+
+    const row4 = el("div", { class: "button-row" });
+    row4.appendChild(button("Progress", () => this._scoreboard(), "btn-panel"));
+    row4.appendChild(button("Settings", () => this._settings(), "btn-panel"));
+    wrap.appendChild(row4);
 
     return wrap;
   }
 
   _startTraining(rec) {
-    const options = { returnTo: "mainMenu" };
-    if (rec.lessonChars) {
-      options.lessonChars = rec.lessonChars;
-      options.lessonLabel = rec.title;
-    }
-    if (rec.mode === "receive") {
-      import("./receivePractice.js").then((m) => this.app.show(m.ReceivePractice, options));
-    } else {
-      import("./sendPractice.js").then((m) => this.app.show(m.SendPractice, options));
-    }
+    startRecommendedTraining(this.app, rec);
   }
 
   _receive() {
@@ -184,6 +181,10 @@ export class MainMenu {
 
   _listen() {
     import("./listenPractice.js").then((m) => this.app.show(m.ListenPractice));
+  }
+
+  _callsigns() {
+    import("./callsignPractice.js").then((m) => this.app.show(m.CallsignPractice));
   }
 
   _switch() {

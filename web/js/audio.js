@@ -44,11 +44,44 @@ export class AudioPlayer {
     return this._runPattern(pattern, wpm, freq, volume, token);
   }
 
+  /** Plays a precomputed timeline of `{tone, durationMs}` steps (see
+   *  farnsworth.js's buildTimeline) — the multi-character equivalent of
+   *  playPatternAsync, used by Callsign Practice. Same interruptible-token
+   *  pattern as _runPattern, just walking steps instead of a dot/dash
+   *  string, so a new call (or stop()) cuts an in-flight sequence cleanly. */
+  playTimelineAsync(steps, freq, volume = 70) {
+    this.stop();
+    const token = ++this._playToken;
+    this._stopFlag = false;
+    return this._runTimeline(steps, freq, volume, token);
+  }
+
+  async _runTimeline(steps, freq, volume, token) {
+    for (const step of steps) {
+      if (this._stopFlag || token !== this._playToken) return;
+      if (step.tone) {
+        await this._beep(freq, step.durationMs, volume);
+      } else {
+        await this._sleep(step.durationMs);
+      }
+    }
+  }
+
   /** Play a single continuous tone (used by Settings). */
   testTone(freq, volume = 70, durationMs = 400) {
     this.stop();
     this._playToken += 1;
     this._beep(freq, durationMs, volume);
+  }
+
+  /** A short, soft, low tone marking a wrong answer — deliberately quieter
+   *  and lower than any training tone (300-1000 Hz) so it reads as a plain
+   *  "not that one" marker, not a punishing sting. Doesn't touch stop()/the
+   *  playback token, so it can't cancel an in-flight replay of the correct
+   *  answer that a caller might trigger around the same time. */
+  playIncorrectCue(volume = 70) {
+    const scaledVolume = Math.max(0, Math.min(100, volume)) * 0.6;
+    this._beep(180, 110, scaledVolume);
   }
 
   /** Ask any in-progress playback to stop after the current element. */

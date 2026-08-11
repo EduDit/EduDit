@@ -130,6 +130,10 @@ html, body {
   color: var(--fg);
   margin: 26px 0 4px;
 }
+/* Home's header pairs the profile name with a "Switch profile" button in a
+   flex row — truncate a long name instead of pushing the button off-screen
+   and causing horizontal scroll. */
+.header-row .title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .heading { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--fg); }
 .small { font-size: 13px; }
 .muted { color: var(--muted); }
@@ -301,6 +305,12 @@ html, body {
 
 /* Home dashboard's single dominant action */
 .hero-card { border-color: var(--accent); }
+
+/* Session Summary: newly unlocked characters after a level-up, presented
+   side by side as their own teaching cards (see teachingCard.js) rather
+   than a plain list. */
+.unlocked-chars-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.unlocked-chars-row .card { flex: 1 1 160px; margin: 0; }
 
 .onboarding-points p { margin: 6px 0; }
 
@@ -556,8 +566,18 @@ input[type="range"] {
   from { opacity: 0; transform: scale(0.92); }
   to { opacity: 1; transform: scale(1); }
 }
+/* Wrong-answer visual cue — deliberately small and quick, never relying on
+   the red text/glyph color alone. Already covered by the global
+   prefers-reduced-motion override above, which zeroes all durations. */
+@keyframes shake-bad {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
 .pulse-good { animation: pulse-good 0.5s ease; }
 .pop-in { animation: pop-in 0.2s ease; }
+.shake-bad { animation: shake-bad 0.4s ease; }
 
 .dialog-overlay {
   position: fixed;

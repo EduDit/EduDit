@@ -6,7 +6,7 @@
 
 import * as storage from "./storage.js";
 import * as codes from "./codes.js";
-import { el, button } from "./dom.js";
+import { el, button, attachArrowNav } from "./dom.js";
 import { accuracyRows, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
 import { ACHIEVEMENTS } from "./achievements.js";
 
@@ -72,14 +72,21 @@ export class Scoreboard {
       wrap.appendChild(
         el("p", { class: "small muted", text: "Keep practicing — your first achievement is closer than you think." })
       );
-      return wrap;
+    } else {
+      const badgeRow = el("div", { class: "badge-row" });
+      for (const a of earnedList) {
+        badgeRow.appendChild(el("span", { class: "badge", text: `🏅 ${a.label}` }));
+      }
+      wrap.appendChild(badgeRow);
     }
 
-    const badgeRow = el("div", { class: "badge-row" });
-    for (const a of earnedList) {
-      badgeRow.appendChild(el("span", { class: "badge", text: `🏅 ${a.label}` }));
+    const cs = entry.profile.callsign_stats;
+    if (cs && cs.attempts > 0) {
+      wrap.appendChild(
+        el("p", { class: "small muted", text: `Callsigns copied: ${cs.correct}/${cs.attempts} correct` })
+      );
     }
-    wrap.appendChild(badgeRow);
+
     return wrap;
   }
 
@@ -136,6 +143,7 @@ export class Scoreboard {
     const tabs = el("div", { class: "tabs" });
     tabs.appendChild(this._tabButton("Receive", "receive"));
     tabs.appendChild(this._tabButton("Send", "send"));
+    attachArrowNav(tabs);
     wrap.appendChild(tabs);
 
     const p = entry.profile;

@@ -108,6 +108,60 @@ In all practice modes, letters you've been missing more often are weighted
 to come up more frequently than ones you already have down (`charWeight` /
 `pickWeighted` in `js/learning.js`).
 
+## Session Summary
+
+Receive/Send Practice always ends somewhere useful instead of just looping
+back into another round: leveling up (`js/receivePractice.js`/
+`js/sendPractice.js`) always shows a **Session Summary**
+(`js/sessionSummary.js`) with score, accuracy, streak, characters
+practiced, and — if new characters unlocked — the same teaching-card
+treatment a character's first appearance gets elsewhere (`js/teachingCard.js`).
+Manually exiting ("< Menu"/Esc) shows the same summary once a real session
+happened (3+ rounds; below that it's a quick accidental-open, so it just
+navigates back directly). The summary's recommendation comes from the same
+`getRecommendation()` (`js/recommendation.js`) Home uses, so the two never
+disagree, and one **Continue Training** button (via the shared
+`startRecommendedTraining()`) is always the obvious next step.
+
+A wrong answer also gets a short, soft, low audio cue
+(`AudioPlayer.playIncorrectCue`, `js/audio.js`) and a brief shake — distinct
+from the correct-answer pulse and never relying on color alone — without
+being punishing or interrupting the pace of practice.
+
+## Callsign & QSO Practice
+
+A peer of Receive/Send/Listen (`js/callsignPractice.js`, reachable from
+Home next to Listen, or from Lessons): copies real-format callsigns
+(`js/callsigns.js`, e.g. `W1AW`) and short beginner exchanges (`CQ CQ DE
+W1AW`, `UR RST 599`) by ear, typed back as free text rather than picked
+from a keyboard. Deliberately uses the full alphabet and digits regardless
+of your unlocked level — framed clearly as an optional stretch mode, not
+a test — and keeps its own `callsign_stats` counters separate from
+per-letter Receive/Send accuracy, since a wrong whole-callsign guess
+doesn't identify which single character was wrong.
+
+## Farnsworth spacing
+
+Settings' **Spacing Speed** slider (alongside **Character Speed**) slows
+the gaps between characters and words while keeping every dot/dash at full
+character speed — the standard way beginners learn to recognize characters
+at real speed. Off by default (matches Character Speed). The timing math
+lives in `js/farnsworth.js`; it only affects Callsign Practice's
+multi-character playback (`AudioPlayer.playTimelineAsync`) — every existing
+single-character Receive/Send/Listen call site is untouched.
+
+## Backup & Restore
+
+Since progress only lives in this browser's `localStorage`, Settings'
+**Backup & Restore** section (`js/backup.js`) exports the active profile to
+a downloadable `.json` file and can re-import one — a straight
+serialization of the same profile object `js/storage.js` already stores,
+just wrapped in a small versioned envelope. Importing validates the file
+first (a clear rejection message for anything malformed) and always
+confirms before overwriting an existing profile, with distinct wording if
+that profile happens to be the one currently active (its session reloads
+immediately after).
+
 ## Scoreboard
 
 Beyond comparing profiles' levels (`js/scoreboard.js`), the Scoreboard is
@@ -129,7 +183,16 @@ rules, streak-to-clear scaling, trouble-letter weighting, and per-letter
 accuracy ranking, all in `js/learning.js` and `js/codes.js` — plus the
 Lessons screen's rendering (including the auto Weak Letters lesson and
 user-made Custom Lessons), the custom lesson editor's save/validate/edit
-behavior, and the Scoreboard's profile comparison and accuracy tabs.
-Serve this folder as above, then open `http://localhost:8000/test.html` —
-it runs in-browser and lists each assertion as PASS/FAIL, no Node or build
-step required.
+behavior, the Scoreboard's profile comparison and accuracy tabs,
+Farnsworth's gap-only timing math (`js/farnsworth.js`), the callsign/
+exchange content generator's format validity (`js/callsigns.js`), and
+profile backup/restore's serialize/parse/validate round-trip
+(`js/backup.js`). Serve this folder as above, then open
+`http://localhost:8000/test.html` — it runs in-browser and lists each
+assertion as PASS/FAIL, no Node or build step required.
+
+Screen classes (`sessionSummary.js`, `callsignPractice.js`, and the
+wrong-answer audio/visual cue and arrow-key navigation helper woven into
+existing screens) intentionally have no dedicated test file, consistent
+with every other screen module (`mainMenu.js`, `journey.js`, etc.) — only
+the pure logic modules they call into are unit-tested.

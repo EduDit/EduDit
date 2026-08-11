@@ -4,7 +4,7 @@
 // running. No answering, no scoring — pure ear training in the background.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, isDigit } from "./dom.js";
+import { el, button, morseGlyphs, isDigit, attachArrowNav } from "./dom.js";
 import { clamp } from "./learning.js";
 
 const MIN_REPEATS = 1;
@@ -222,6 +222,7 @@ export class ListenPractice {
       keyboard.appendChild(rowEl);
       if (row.every(isDigit)) this.digitsRow = rowEl;
     }
+    attachArrowNav(keyboard);
     return keyboard;
   }
 

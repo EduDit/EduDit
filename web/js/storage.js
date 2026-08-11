@@ -67,10 +67,17 @@ export function defaultProfile() {
     achievements: {},
     // { "YYYY-MM-DD": activeMsPracticedThatDay } — see dailyPractice.js.
     daily_practice: {},
+    // Callsign/QSO Practice's own counters — kept separate from
+    // receive_seen/mistakes (see callsignPractice.js): a wrong whole-
+    // callsign guess doesn't identify which single character was wrong, so
+    // folding it into per-letter accuracy would misrepresent that stat.
+    callsign_stats: { attempts: 0, correct: 0 },
     settings: {
       wpm: 15,
       freq: 600,
       volume: 70,
+      // null = off, spacing matches character speed. See farnsworth.js.
+      farnsworthWpm: null,
       dotKey: null,
       dashKey: null,
       keepAwake: false,

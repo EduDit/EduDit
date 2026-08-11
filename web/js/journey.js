@@ -4,7 +4,7 @@
 // internal terminology. Tapping one reveals its details.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs } from "./dom.js";
+import { el, button, morseGlyphs, attachArrowNav } from "./dom.js";
 import { stateFor } from "./characterState.js";
 import { combinedSeen, tierLetters } from "./weakLetters.js";
 
@@ -59,6 +59,7 @@ export class Journey {
         })
       );
     }
+    attachArrowNav(grid);
     wrap.appendChild(grid);
 
     if (this.selected) {

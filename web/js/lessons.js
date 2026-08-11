@@ -32,6 +32,9 @@ export class Lessons {
 
     wrap.appendChild(el("p", { class: "small muted", text: "Practice specific characters." }));
     wrap.appendChild(button("View Morse Journey  ▶", () => this._journey(), "btn-panel btn-block"));
+    wrap.appendChild(
+      button("Callsign & QSO Practice  ▶", () => this._callsigns(), "btn-panel btn-block")
+    );
 
     wrap.appendChild(el("div", { class: "divider" }));
     wrap.appendChild(this._weakLettersSection(p));
@@ -135,6 +138,10 @@ export class Lessons {
 
   _journey() {
     import("./journey.js").then((m) => this.app.show(m.Journey));
+  }
+
+  _callsigns() {
+    import("./callsignPractice.js").then((m) => this.app.show(m.CallsignPractice, { returnTo: "lessons" }));
   }
 
   _customLessonRow(lesson) {

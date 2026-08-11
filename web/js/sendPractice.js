@@ -10,6 +10,10 @@ import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learn
 import { explainCharacter } from "./explainSelection.js";
 import { evaluateAchievements } from "./achievements.js";
 import { recordActivity } from "./dailyPractice.js";
+import { newCharacterCard } from "./teachingCard.js";
+
+// See the matching constant in receivePractice.js — same reasoning.
+const SUMMARY_MIN_ROUNDS = 3;
 
 const WRONG_PENALTY = 2;
 const DOT_THRESHOLD_UNITS = 2; // hold >= this many units counts as a dash
@@ -35,6 +39,10 @@ export class SendPractice {
     this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
+    // Tracked in every round (not just lesson-mode) so Session Summary has
+    // something real to show regardless of how the session ends.
+    this.sessionChars = new Set();
+    this.sessionMisses = {};
     this.target = null;
     this.pattern = "";
     this.keyDown = false;
@@ -285,7 +293,12 @@ export class SendPractice {
       // see the matching card in receivePractice.js for the same reasoning.
       this._setStatus("New character", "good");
       this.teachCard.style.display = "";
-      this.teachCard.appendChild(this._newCharacterCard(this.target));
+      this.teachCard.appendChild(
+        newCharacterCard(this.target, {
+          onPlay: () => this._playTarget(),
+          onPractice: () => this._practiceThisChar(this.target),
+        })
+      );
       this.hintTimer = setTimeout(() => {
         if (!this.answered) this._playTarget();
       }, 350);
@@ -296,25 +309,6 @@ export class SendPractice {
         if (!this.answered) this._playTarget();
       }, 350);
     }
-  }
-
-  // See the matching card in receivePractice.js — same idea, presented for
-  // Send Practice's "see it, then key it" flow.
-  _newCharacterCard(ch) {
-    const card = el("div", { class: "card pop-in" });
-    card.appendChild(el("span", { class: "badge", text: "New Character" }));
-    card.appendChild(el("div", { class: "big-char", text: ch, style: { margin: "6px 0" } }));
-    const glyphRow = el("div", { class: "hint-viz" });
-    glyphRow.appendChild(morseGlyphs(codes.MORSE[ch], "good"));
-    card.appendChild(glyphRow);
-    card.appendChild(
-      el("p", { class: "small muted center", text: codes.rhythmPhrase(codes.MORSE[ch]) })
-    );
-    const row = el("div", { class: "button-row" });
-    row.appendChild(button("Hear it  ▶", () => this._playTarget(), "btn-panel"));
-    row.appendChild(button(`Practice ${ch}`, () => this._practiceThisChar(ch), "btn-accent"));
-    card.appendChild(row);
-    return card;
   }
 
   _practiceThisChar(ch) {
@@ -344,26 +338,35 @@ export class SendPractice {
     if (this.answered || !this.pattern) return;
     this.answered = true;
     const p = this.app.profile;
+    const s = p.settings;
     const missStreaks = p.send_miss_streak || (p.send_miss_streak = {});
     const guess = codes.charFromPattern(this.pattern);
     const correctPattern = codes.MORSE[this.target];
+    this.sessionTotal += 1;
+    this.sessionChars.add(this.target);
     if (this.pattern === correctPattern) {
+      this.sessionCorrect += 1;
       const priorMissStreak = missStreaks[this.target] || 0;
       missStreaks[this.target] = 0;
       if (priorMissStreak >= GETTING_STRONGER_THRESHOLD) {
         showToast(`${this.target} is getting stronger — nice work!`);
       }
+      let leveledUp = false;
+      let unlockedChars = [];
       if (this.lessonChars) {
-        this.sessionCorrect += 1;
-        this.sessionTotal += 1;
         this._setStatus(`Correct!  ${this.pattern}`, "good");
       } else {
         p.send_streak += 1;
         const target = streakToClear(p.send_level);
         if (p.send_streak >= target) {
           p.send_streak = 0;
+          const priorLevel = p.send_level;
           if (p.send_level < codes.MAX_LEVEL) {
             p.send_level += 1;
+            leveledUp = true;
+            unlockedChars = codes
+              .poolForLevel(p.send_level)
+              .slice(codes.poolForLevel(priorLevel).length);
             this._setStatus("Level up! New characters unlocked.", "good");
           } else {
             this._setStatus("All characters mastered!", "good");
@@ -375,20 +378,24 @@ export class SendPractice {
       this._checkAchievements();
       this.app.saveProfile();
       this._updateMeta();
-      this.roundTimer = setTimeout(() => this.nextRound(), 900);
+      if (leveledUp) {
+        this.roundTimer = setTimeout(() => this._showSummary({ leveledUp, unlockedChars }), 900);
+      } else {
+        this.roundTimer = setTimeout(() => this.nextRound(), 900);
+      }
     } else {
       missStreaks[this.target] = (missStreaks[this.target] || 0) + 1;
       p.mistakes = p.mistakes || {};
       p.mistakes[this.target] = (p.mistakes[this.target] || 0) + 1;
       p.send_mistakes = p.send_mistakes || {};
       p.send_mistakes[this.target] = (p.send_mistakes[this.target] || 0) + 1;
-      if (this.lessonChars) {
-        this.sessionTotal += 1;
-      } else {
+      this.sessionMisses[this.target] = (this.sessionMisses[this.target] || 0) + 1;
+      if (!this.lessonChars) {
         p.send_streak = Math.max(0, p.send_streak - WRONG_PENALTY);
       }
       const decodedNote = guess ? `  (you sent ${guess})` : "  (not a valid pattern)";
       this._setStatus(`${this.target} is:${decodedNote}`, "bad");
+      this.app.audio.playIncorrectCue(s.volume);
       this.hintViz.innerHTML = "";
       this.hintViz.appendChild(morseGlyphs(correctPattern, "bad"));
       this._checkAchievements();
@@ -419,6 +426,10 @@ export class SendPractice {
       this.status.classList.remove("pulse-good");
       void this.status.offsetWidth;
       this.status.classList.add("pulse-good");
+    } else if (kind === "bad") {
+      this.status.classList.remove("shake-bad");
+      void this.status.offsetWidth;
+      this.status.classList.add("shake-bad");
     }
   }
 
@@ -434,6 +445,14 @@ export class SendPractice {
   }
 
   goBack() {
+    if (this.sessionTotal >= SUMMARY_MIN_ROUNDS) {
+      this._showSummary();
+    } else {
+      this._navigateBack();
+    }
+  }
+
+  _navigateBack() {
     if (this.returnTo === "journey") {
       import("./journey.js").then((m) => this.app.show(m.Journey));
     } else if (this.returnTo === "lessons") {
@@ -441,6 +460,21 @@ export class SendPractice {
     } else {
       import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
     }
+  }
+
+  // See the matching method in receivePractice.js — extra.leveledUp
+  // bypasses the SUMMARY_MIN_ROUNDS check entirely.
+  _showSummary(extra = {}) {
+    const stats = {
+      correct: this.sessionCorrect,
+      total: this.sessionTotal,
+      chars: this.sessionChars,
+      misses: this.sessionMisses,
+      leveledUp: false,
+      unlockedChars: [],
+      ...extra,
+    };
+    import("./sessionSummary.js").then((m) => this.app.show(m.SessionSummary, { mode: "send", stats }));
   }
 
   destroy() {

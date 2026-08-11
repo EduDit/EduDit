@@ -1,10 +1,11 @@
 // Settings: per-profile WPM and tone pitch, light PIN, and a progress reset.
 
 import * as storage from "./storage.js";
-import { el, button, keyLabel } from "./dom.js";
+import { el, button, keyLabel, attachArrowNav } from "./dom.js";
 import { confirmDialog, alertDialog } from "./dialog.js";
 import { showShortcutsHelp } from "./shortcutsHelp.js";
 import { APP_VERSION } from "./version.js";
+import { serializeProfile, parseImportedProfile } from "./backup.js";
 
 export class Settings {
   constructor(root, app) {
@@ -23,7 +24,8 @@ export class Settings {
 
     const s = this.app.profile.settings;
 
-    wrap.appendChild(this._slider("Speed (WPM)", s.wpm, 5, 35, (v) => this._onWpm(v)));
+    wrap.appendChild(this._slider("Character Speed (WPM)", s.wpm, 5, 35, (v) => this._onWpm(v)));
+    wrap.appendChild(this._farnsworthSection());
     wrap.appendChild(this._slider("Tone pitch (Hz)", s.freq, 300, 1000, (v) => this._onFreq(v)));
     wrap.appendChild(this._slider("Volume", s.volume ?? 70, 10, 100, (v) => this._onVolume(v)));
     wrap.appendChild(this._themeSection());
@@ -31,6 +33,7 @@ export class Settings {
 
     wrap.appendChild(this._sendKeysSection());
     wrap.appendChild(this._pinSection());
+    wrap.appendChild(this._backupSection());
 
     wrap.appendChild(
       button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
@@ -62,6 +65,63 @@ export class Settings {
     return frame;
   }
 
+  // Farnsworth spacing: slows the gaps between characters/words while
+  // dot/dash timing stays at full Character Speed — see farnsworth.js.
+  // Off by default (farnsworthWpm: null). Dragging up to (or past)
+  // Character Speed is treated as "off" rather than needing the slider's
+  // own max to track the Character Speed slider live.
+  _farnsworthSection() {
+    const s = this.app.profile.settings;
+    const isOff = !s.farnsworthWpm;
+    const value = s.farnsworthWpm || s.wpm;
+
+    const frame = el("div", { class: "slider-frame" });
+    const row = el("div", { class: "row" });
+    row.appendChild(el("span", { text: "Spacing Speed (WPM)" }));
+    const valueLbl = el("span", {
+      class: "good",
+      text: isOff ? `${value} (same as character speed)` : String(value),
+    });
+    row.appendChild(valueLbl);
+    frame.appendChild(row);
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Characters are sent at your Character Speed above, while the gaps between " +
+          "characters and words can be slowed down separately to make listening easier.",
+      })
+    );
+
+    const input = el("input", { type: "range", min: "5", max: "35", value: String(value) });
+    input.addEventListener("input", () => {
+      const v = Number(input.value);
+      const off = v >= s.wpm;
+      valueLbl.textContent = off ? `${v} (same as character speed)` : String(v);
+      this._onFarnsworth(off ? null : v);
+    });
+    frame.appendChild(input);
+
+    if (!isOff) {
+      frame.appendChild(
+        button("Match character speed", () => this._resetFarnsworth(), "btn-block btn-panel")
+      );
+    }
+
+    return frame;
+  }
+
+  _onFarnsworth(v) {
+    this.app.profile.settings.farnsworthWpm = v;
+    this.app.saveProfile();
+  }
+
+  _resetFarnsworth() {
+    this.app.profile.settings.farnsworthWpm = null;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
   _themeSection() {
     const frame = el("div", { class: "slider-frame" });
     frame.appendChild(el("span", { text: "Appearance" }));
@@ -87,6 +147,7 @@ export class Settings {
       });
       tabs.appendChild(tab);
     }
+    attachArrowNav(tabs);
     frame.appendChild(tabs);
     return frame;
   }
@@ -244,6 +305,94 @@ export class Settings {
     }
 
     return frame;
+  }
+
+  // Progress lives only in this browser's localStorage — export/import
+  // protects against losing it to a cleared cache, a browser switch, or a
+  // reinstall. `profile` is written/read exactly as storage.js already
+  // stores it (see backup.js); this never creates a second storage system.
+  _backupSection() {
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Backup & Restore" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Your progress is only saved in this browser. Export a backup so clearing your " +
+          "browser data or switching devices doesn't lose it.",
+      })
+    );
+
+    const row = el("div", { class: "button-row" });
+    row.appendChild(button("Export Profile", () => this._exportProfile(), "btn-panel"));
+
+    const fileInput = el("input", {
+      type: "file",
+      accept: ".json,application/json",
+      style: { display: "none" },
+    });
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      fileInput.value = "";
+      if (file) this._importProfile(file);
+    });
+    row.appendChild(button("Import Profile", () => fileInput.click(), "btn-panel"));
+    frame.appendChild(row);
+    frame.appendChild(fileInput);
+
+    return frame;
+  }
+
+  _exportProfile() {
+    const name = this.app.profileName;
+    const json = serializeProfile(name, this.app.profile);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = el("a", { href: url, download: `ditdash-${name}.json` });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async _importProfile(file) {
+    let text;
+    try {
+      text = await file.text();
+    } catch (e) {
+      await alertDialog("Couldn't read that file.");
+      return;
+    }
+
+    let imported;
+    try {
+      imported = parseImportedProfile(text);
+    } catch (e) {
+      await alertDialog(e.message);
+      return;
+    }
+
+    const { name, profile } = imported;
+    const isActiveProfile = name === this.app.profileName;
+    const alreadyExists = storage.listProfiles().includes(name);
+
+    if (alreadyExists) {
+      const message = isActiveProfile
+        ? "This will overwrite your current profile with the imported backup — your session will reload immediately."
+        : `A profile named "${name}" already exists — overwrite it with this backup?`;
+      const ok = await confirmDialog(message);
+      if (!ok) return;
+    }
+
+    storage.saveProfile(name, profile);
+
+    if (isActiveProfile) {
+      this.app.loadProfile(name);
+      this._rebuild();
+      await alertDialog("Profile restored.");
+    } else {
+      await alertDialog(`Profile "${name}" restored. Switch to it from Profile Select to use it.`);
+    }
   }
 
   _setPin(value) {
