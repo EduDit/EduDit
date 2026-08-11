@@ -1,0 +1,42 @@
+name: Build and publish DitDashWeb.exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/js/version.js"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyinstaller
+
+      - name: Read app version
+        id: version
+        run: |
+          $content = Get-Content web/js/version.js -Raw
+          $m = [regex]::Match($content, 'APP_VERSION = "([^"]+)"')
+          "version=$($m.Groups[1].Value)" >> $env:GITHUB_OUTPUT
+
+      - name: Build DitDashWeb.exe
+        run: pyinstaller --onefile --windowed --name DitDashWeb --icon assets\icon.ico --add-data "web;web" web_launcher.py
+
+      - uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: dist/DitDashWeb.exe
+          generate_release_notes: true
