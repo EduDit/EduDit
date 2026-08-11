@@ -192,11 +192,13 @@ export class ListenPractice {
   // announcement available without it muddying the plain tone-then-pause
   // rhythm by default.
   _speakToggleRow() {
+    const frame = el("div", { class: "slider-frame" });
     const row = el("div", { class: "row" });
     row.appendChild(el("span", { text: "Say letter name first" }));
     this.speakToggleBtn = button(this._speakEnabled() ? "On" : "Off", () => this._toggleSpeak(), "btn-panel");
     row.appendChild(this.speakToggleBtn);
-    return row;
+    frame.appendChild(row);
+    return frame;
   }
 
   _speakEnabled() {

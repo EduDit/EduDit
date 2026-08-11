@@ -24,28 +24,38 @@ export class Settings {
 
     const s = this.app.profile.settings;
 
+    wrap.appendChild(this._sectionTitle("Audio"));
     wrap.appendChild(this._slider("Character Speed (WPM)", s.wpm, 5, 35, (v) => this._onWpm(v)));
     wrap.appendChild(this._farnsworthSection());
     wrap.appendChild(this._slider("Tone pitch (Hz)", s.freq, 300, 1000, (v) => this._onFreq(v)));
     wrap.appendChild(this._slider("Volume", s.volume ?? 70, 10, 100, (v) => this._onVolume(v)));
+    wrap.appendChild(button("Test tone  ♪", () => this._testTone(), "btn-block btn-accent"));
+
+    wrap.appendChild(this._sectionTitle("Appearance & Behavior"));
     wrap.appendChild(this._themeSection());
     wrap.appendChild(this._keepAwakeSection());
 
+    wrap.appendChild(this._sectionTitle("Controls"));
     wrap.appendChild(this._sendKeysSection());
-    wrap.appendChild(this._pinSection());
-    wrap.appendChild(this._backupSection());
-
     wrap.appendChild(
       button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
     );
-    wrap.appendChild(button("Test tone  ♪", () => this._testTone(), "btn-block btn-accent"));
+
+    wrap.appendChild(this._sectionTitle("Profile & Data"));
+    wrap.appendChild(this._pinSection());
+    wrap.appendChild(this._backupSection());
     wrap.appendChild(
       button("Reset this profile's progress", () => this._reset(), "btn-block btn-danger")
     );
 
+    wrap.appendChild(this._sectionTitle("About"));
     wrap.appendChild(this._versionSection());
 
     this.root.appendChild(wrap);
+  }
+
+  _sectionTitle(text) {
+    return el("div", { class: "settings-section-title", text });
   }
 
   _slider(label, value, lo, hi, onInput) {

@@ -439,6 +439,16 @@ html, body {
 .accuracy-count { text-align: right; font-variant-numeric: tabular-nums; }
 
 .slider-frame { margin-top: 20px; }
+
+.settings-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 30px 0 4px;
+}
+.settings-section-title:first-of-type { margin-top: 10px; }
 input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
@@ -448,6 +458,26 @@ input[type="range"] {
 @media (min-width: 540px) {
   #app { padding: 0 28px; }
   .header-row, .update-banner { margin: 0 -28px; padding-left: 28px; padding-right: 28px; }
+}
+
+/* Tablets/desktops: let the column widen and breathe instead of staying
+   pinned to phone width with empty margins on either side. Scoped to
+   min-width so phones are completely unaffected. */
+@media (min-width: 760px) {
+  #app { max-width: 640px; padding: 0 36px; }
+  .header-row, .update-banner { margin: 0 -36px; padding-left: 36px; padding-right: 36px; }
+  .slider-frame { margin-top: 26px; }
+  .card { padding: 22px; margin: 14px 0; }
+  .button-row { gap: 12px; margin: 18px 0; }
+  .keyboard { gap: 9px; margin: 22px 0; }
+  .keyboard-row { gap: 8px; }
+  .key { max-width: 56px; padding: 15px 0; font-size: 17px; }
+  .big-char { margin: 10px 0 16px; }
+}
+
+@media (min-width: 1080px) {
+  #app { max-width: 760px; padding: 0 44px; }
+  .header-row, .update-banner { margin: 0 -44px; padding-left: 44px; padding-right: 44px; }
 }
 
 /* Narrow phones (e.g. iPhone SE): claw back a little width so the ten-wide
