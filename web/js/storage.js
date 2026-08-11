@@ -3,6 +3,7 @@
 //   { profiles: ["Alice", "Bob"], data: { "Alice": {...}, "Bob": {...} } }
 
 const STORAGE_KEY = "ditdash";
+const THEME_KEY = "ditdash-theme";
 
 function _readAll() {
   try {
@@ -20,6 +21,23 @@ function _readAll() {
 
 function _writeAll(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// Appearance is a device preference, not a per-profile one — stored outside
+// the profile blob so it applies immediately at boot, before any profile is
+// chosen (Profile Select included), and stays consistent across profiles on
+// the same device.
+export function getTheme() {
+  const value = localStorage.getItem(THEME_KEY);
+  return value === "light" || value === "dark" ? value : "system";
+}
+
+export function setTheme(theme) {
+  if (theme === "light" || theme === "dark") {
+    localStorage.setItem(THEME_KEY, theme);
+  } else {
+    localStorage.removeItem(THEME_KEY);
+  }
 }
 
 export function defaultProfile() {

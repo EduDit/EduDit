@@ -41,7 +41,6 @@ export class MainMenu {
 
     const bottomRow = el("div", { class: "button-row" });
     bottomRow.appendChild(button("Listen  🎧", () => this._listen(), "btn-panel"));
-    bottomRow.appendChild(button("Lessons  📖", () => this._lessons(), "btn-panel"));
     bottomRow.appendChild(button("Scoreboard  🏆", () => this._scoreboard(), "btn-panel"));
     bottomRow.appendChild(button("Settings", () => this._settings(), "btn-panel"));
     wrap.appendChild(bottomRow);

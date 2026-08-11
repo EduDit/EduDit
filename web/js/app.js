@@ -20,6 +20,7 @@ class App {
     document.addEventListener("pointerdown", primeAudio, { once: true });
     document.addEventListener("keydown", primeAudio, { once: true });
 
+    this._applyTheme();
     this.show(ProfileSelect);
     checkForUpdate().then((info) => info && showUpdateBanner(info));
   }
@@ -40,6 +41,20 @@ class App {
 
   saveProfile() {
     storage.saveProfile(this.profileName, this.profile);
+  }
+
+  setTheme(theme) {
+    storage.setTheme(theme);
+    this._applyTheme();
+  }
+
+  _applyTheme() {
+    const theme = storage.getTheme();
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.dataset.theme = theme;
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
   }
 
   setKeepAwake(enabled) {

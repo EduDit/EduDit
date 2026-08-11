@@ -25,6 +25,7 @@ export class Settings {
     wrap.appendChild(this._slider("Speed (WPM)", s.wpm, 5, 35, (v) => this._onWpm(v)));
     wrap.appendChild(this._slider("Tone pitch (Hz)", s.freq, 300, 1000, (v) => this._onFreq(v)));
     wrap.appendChild(this._slider("Volume", s.volume ?? 70, 10, 100, (v) => this._onVolume(v)));
+    wrap.appendChild(this._themeSection());
     wrap.appendChild(this._keepAwakeSection());
 
     wrap.appendChild(this._sendKeysSection());
@@ -55,6 +56,39 @@ export class Settings {
     });
     frame.appendChild(input);
     return frame;
+  }
+
+  _themeSection() {
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Appearance" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "System follows your device's light/dark setting.",
+      })
+    );
+
+    const current = storage.getTheme();
+    const tabs = el("div", { class: "tabs" });
+    for (const [value, label] of [
+      ["system", "System"],
+      ["light", "Light"],
+      ["dark", "Dark"],
+    ]) {
+      const tab = el("button", {
+        class: `tab-btn ${value === current ? "tab-btn-active" : ""}`.trim(),
+        text: label,
+        onclick: () => this._onTheme(value),
+      });
+      tabs.appendChild(tab);
+    }
+    frame.appendChild(tabs);
+    return frame;
+  }
+
+  _onTheme(theme) {
+    this.app.setTheme(theme);
+    this._rebuild();
   }
 
   _keepAwakeSection() {
