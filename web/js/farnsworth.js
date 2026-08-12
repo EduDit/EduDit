@@ -5,9 +5,8 @@
 // itself (that stays exactly as audio.js's playPattern/_runPattern already
 // compute it for every existing single-character call site).
 
-export function unitMs(wpm) {
-  return 1200 / Math.max(1, wpm);
-}
+export { unitMs } from "./timing.js";
+import { unitMs } from "./timing.js";
 
 // Spacing can never be faster than character speed — that would mean gaps
 // shorter than the characters they separate, which isn't Farnsworth, it's

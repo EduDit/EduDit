@@ -12,14 +12,12 @@ import { evaluateAchievements } from "./achievements.js";
 import { recordActivity } from "./dailyPractice.js";
 import { newCharacterCard } from "./teachingCard.js";
 import { calculateResponseScore, updateFluencyEma } from "./scoring.js";
+import { unitMs, DOT_THRESHOLD_UNITS, DECODE_GAP_UNITS, DECODE_GAP_MIN_MS } from "./timing.js";
 
 // See the matching constant in receivePractice.js — same reasoning.
 const SUMMARY_MIN_ROUNDS = 3;
 
 const WRONG_PENALTY = 2;
-const DOT_THRESHOLD_UNITS = 2; // hold >= this many units counts as a dash
-const DECODE_GAP_UNITS = 3;
-const DECODE_GAP_MIN_MS = 600;
 // See the matching constant in receivePractice.js — same reasoning.
 const GETTING_STRONGER_THRESHOLD = 2;
 
@@ -42,6 +40,12 @@ export class SendPractice {
     this.returnTo = options.returnTo || (this.lessonChars ? "lessons" : "mainMenu");
     // See the matching field in receivePractice.js — same reasoning.
     this.embedded = !!options.embedded;
+    // A physical Morse key/paddle source (see morseInput/*.js), owned and
+    // destroyed by the caller (keyPractice.js), never by SendPractice —
+    // this class only ever subscribes to it. Purely additive: with no
+    // morseInput, every existing keyboard/mouse/touch input path below is
+    // unchanged.
+    this.morseInput = options.morseInput || null;
     this.sessionCorrect = 0;
     this.sessionTotal = 0;
     // Tracked in every round (not just lesson-mode) so Session Summary has
@@ -189,6 +193,27 @@ export class SendPractice {
     };
     document.addEventListener("keydown", this._onKeyDown);
     document.addEventListener("keyup", this._onKeyUp);
+
+    // A physical key's normalized events feed the exact same two funnels
+    // as Space (hold-duration) and the dedicated dot/dash keys (direct
+    // symbol injection) — see morseInput/*.js for why "generic" (straight
+    // key, or audio, which can never tell dit from dah) maps to
+    // onPress()/onRelease() while "dit"/"dah" (a mapped double paddle) maps
+    // straight to registerSymbol(), matching the existing dotKey/dashKey
+    // precedent above.
+    if (this.morseInput) {
+      this._onMorseKey = (e) => {
+        const { action, element } = e.detail;
+        if (element === "generic") {
+          if (action === "down") this.onPress();
+          else this.onRelease();
+        } else if (action === "down") {
+          this._flashKey();
+          this.registerSymbol(element === "dit" ? "." : "-");
+        }
+      };
+      this.morseInput.addEventListener("morsekey", this._onMorseKey);
+    }
   }
 
   // See the matching method in receivePractice.js — same reasoning.
@@ -245,7 +270,7 @@ export class SendPractice {
   }
 
   _unitMs() {
-    return 1200.0 / Math.max(1, this.app.profile.settings.wpm);
+    return unitMs(this.app.profile.settings.wpm);
   }
 
   onPress() {
@@ -565,6 +590,10 @@ export class SendPractice {
     document.removeEventListener("keydown", this._onKeyDown);
     document.removeEventListener("keyup", this._onKeyUp);
     document.removeEventListener("visibilitychange", this._onVisibilityChange);
+    // Unsubscribe only — this.morseInput is owned by the caller (see the
+    // field comment in the constructor), so its own start()/destroy()
+    // lifecycle (mic streams, document listeners) is never touched here.
+    if (this.morseInput) this.morseInput.removeEventListener("morsekey", this._onMorseKey);
     this.app.audio.stop();
     recordActivity(this.app.profile, Date.now() - this._visitStart);
     // See the matching call in receivePractice.js's destroy() — catches

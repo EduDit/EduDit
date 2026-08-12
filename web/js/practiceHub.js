@@ -34,6 +34,12 @@ const TABS = [
     loader: () => import("./listenPractice.js").then((m) => m.ListenPractice),
   },
   {
+    id: "key",
+    label: "Key Practice",
+    description: "Send Morse with a real physical key or paddle.",
+    loader: () => import("./keyPractice.js").then((m) => m.KeyPractice),
+  },
+  {
     id: "callsigns",
     label: "Callsigns",
     description: "Practice realistic radio exchanges.",

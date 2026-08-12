@@ -2,6 +2,8 @@
 // winsound.Beep calls. PARIS timing: one unit = 1200 / wpm ms, a dot is one unit,
 // a dash is three, and the gap between elements within a character is one unit.
 
+import { unitMs as unitMsFor } from "./timing.js";
+
 export class AudioPlayer {
   constructor() {
     this._ctx = null;
@@ -118,15 +120,15 @@ export class AudioPlayer {
   }
 
   async _runPattern(pattern, wpm, freq, volume, token) {
-    const unitMs = 1200.0 / Math.max(1, wpm);
+    const unit = unitMsFor(wpm);
     for (let i = 0; i < pattern.length; i++) {
       if (this._stopFlag || token !== this._playToken) return;
       const symbol = pattern[i];
-      const duration = symbol === "." ? unitMs : unitMs * 3;
+      const duration = symbol === "." ? unit : unit * 3;
       await this._beep(freq, duration, volume);
       if (this._stopFlag || token !== this._playToken) return;
       if (i !== pattern.length - 1) {
-        await this._sleep(unitMs);
+        await this._sleep(unit);
       }
     }
   }

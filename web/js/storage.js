@@ -97,6 +97,31 @@ export function defaultProfile() {
       // onboarding, purely informational (copy/emphasis only, never the
       // learning order or adaptive weighting).
       priorExperience: null,
+
+      // Physical Morse key input — see morseInput/*.js, keyPractice.js,
+      // keyCalibration.js. Flat fields (not a nested object) so loadProfile()'s
+      // shallow Object.assign(profile.settings, stored.settings) merge keeps
+      // giving old profiles a default for any field added here later, the
+      // same way dotKey/dashKey above already work.
+      keyType: "straight", // "straight" | "paddle"
+      keyConnection: "hid", // "hid" (keyboard/HID-emulating interface) | "audio"
+      keyHidCode: null, // straight key: KeyboardEvent.code
+      keyHidDitCode: null, // double paddle: dit contact's KeyboardEvent.code
+      keyHidDahCode: null, // double paddle: dah contact's KeyboardEvent.code
+      keyHidDebounceMs: null, // null = derive from keySensitivity
+      swapDitDah: false, // reversed paddle orientation
+      keyAudioDeviceId: null, // null = browser default input
+      keySensitivity: 50, // 0-100, drives keyHidDebounceMs / keyAudioThresholdLevel when unset
+      keyAudioThresholdLevel: null, // null = derive from keySensitivity + calibrated background level
+      keyAudioHysteresis: 0.02, // small fixed margin, same units as the RMS level signal (0-1)
+      keyAudioMinToneMs: null, // null = derive per the WPM-scaled floor/ceiling formula in morseInput/audioKeyInput.js
+      keyAudioPolarity: null, // "keyDownLouder" | "keyDownQuieter" — null until Calibration measures it
+      keyLastCalibration: null, // diagnostic snapshot only, never required for normal operation
+      // Named snapshots of the key* fields above, so a learner with
+      // multiple keys/paddles/interfaces can switch between them without
+      // re-mapping/re-calibrating each time — see keyPresets.js.
+      keyPresets: [],
+      activeKeyPresetId: null, // which saved preset (if any) the fields above currently match
     },
   };
 }

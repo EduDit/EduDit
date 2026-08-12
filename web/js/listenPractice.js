@@ -6,6 +6,7 @@
 import * as codes from "./codes.js";
 import { el, button, morseGlyphs, isDigit, attachArrowNav, pageHeader } from "./dom.js";
 import { clamp } from "./learning.js";
+import { unitMs as unitMsFor } from "./timing.js";
 
 const MIN_REPEATS = 1;
 const MAX_REPEATS = 10;
@@ -285,8 +286,8 @@ export class ListenPractice {
         if (!this.running || id !== this._cycleId) return;
         await this._playLetter(ch, id);
         if (!this.running || id !== this._cycleId) return;
-        const unitMs = 1200.0 / Math.max(1, this.app.profile.settings.wpm);
-        await this._sleep(unitMs * this._gapUnits());
+        const unit = unitMsFor(this.app.profile.settings.wpm);
+        await this._sleep(unit * this._gapUnits());
       }
     }
   }
@@ -295,7 +296,7 @@ export class ListenPractice {
     const s = this.app.profile.settings;
     const pattern = codes.MORSE[ch];
     const times = this._repeats();
-    const unitMs = 1200.0 / Math.max(1, s.wpm);
+    const unit = unitMsFor(s.wpm);
 
     this._showCurrent(ch);
     if (this._speakEnabled()) {
@@ -309,7 +310,7 @@ export class ListenPractice {
       this._setStatus(`Playing ${ch}  ${i + 1} / ${times}`);
       await this.app.audio.playPatternAsync(pattern, s.wpm, s.freq, s.volume);
       if (id !== this._cycleId || !this.running) return;
-      if (i !== times - 1) await this._sleep(unitMs * this._repeatGapUnits());
+      if (i !== times - 1) await this._sleep(unit * this._repeatGapUnits());
     }
   }
 

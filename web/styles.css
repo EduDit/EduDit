@@ -756,6 +756,35 @@ html, body {
 .activity-bar-fill { width: 100%; min-height: 3px; background: var(--panel-2); border-radius: 3px 3px 0 0; }
 .activity-bar-fill.good { background: var(--accent); }
 
+/* Key Input's Input Monitor — audio level trace or keyboard/HID event log,
+   see keyInputMonitor.js. Shares the app's card-ish bordered-container
+   language rather than inventing new chrome. */
+.key-monitor { margin-top: 12px; }
+.key-monitor-canvas {
+  display: block;
+  width: 100%;
+  height: 90px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+.key-monitor-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.key-monitor-log li {
+  padding: 6px 10px;
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.key-monitor-log li:last-child { border-bottom: none; }
+
 .slider-frame { margin-top: 20px; }
 
 .settings-section-title {

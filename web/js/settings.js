@@ -4,18 +4,38 @@
 // all shown at once. About stays visible under every tab, not tabbed itself.
 
 import * as storage from "./storage.js";
-import { el, button, keyLabel, attachArrowNav, tabBar, pageHeader } from "./dom.js";
-import { confirmDialog, alertDialog } from "./dialog.js";
+import { el, button, keyLabel, attachArrowNav, tabBar, pageHeader, showToast } from "./dom.js";
+import { confirmDialog, alertDialog, promptDialog } from "./dialog.js";
 import { showShortcutsHelp } from "./shortcutsHelp.js";
 import { APP_VERSION } from "./version.js";
 import { serializeProfile, parseImportedProfile } from "./backup.js";
+import { debounceMsFromSensitivity } from "./morseInput/keyboardKeyInput.js";
+import { thresholdFromSensitivity, AUDIO_RELIABLE_WPM_CEILING } from "./morseInput/audioKeyInput.js";
+import { createMorseInput } from "./morseInput/morseInput.js";
+import { createKeyPreset, applyKeyPreset, presetMatches } from "./keyPresets.js";
 
 const TABS = [
   { id: "practice", label: "Practice" },
   { id: "audio", label: "Audio" },
+  { id: "key", label: "Key Input" },
   { id: "appearance", label: "Appearance" },
   { id: "data", label: "Data" },
 ];
+
+// Human labels for every currently-claimable KeyboardEvent.code binding —
+// used by _captureKeyRow()'s cross-group conflict check so the same
+// physical key can't accidentally be bound twice (e.g. once as a Send
+// Practice tap-dot key, once as a Key Input Dit mapping). Both binding
+// groups can be listening for keydown/keyup simultaneously once Key
+// Practice wraps SendPractice with an attached MorseInput, so a real
+// conflict here would double-fire a symbol on a single keypress.
+const KEY_FIELD_LABELS = {
+  dotKey: "the Send Practice dot key",
+  dashKey: "the Send Practice dash key",
+  keyHidCode: "your Key Input straight-key mapping",
+  keyHidDitCode: "your Key Input Dit mapping",
+  keyHidDahCode: "your Key Input Dah mapping",
+};
 
 export class Settings {
   constructor(root, app) {
@@ -24,6 +44,10 @@ export class Settings {
     this.tab = "practice";
     // Which collapsed sliders are currently expanded — see _collapsible().
     this._expanded = new Set();
+    // The Input Monitor's own MorseInput instance, created only while its
+    // section is expanded — see _keyMonitorContent()/_teardownKeyMonitor().
+    this._keyMonitorInput = null;
+    this._keyMonitorHandle = null;
     this._build();
   }
 
@@ -42,6 +66,7 @@ export class Settings {
     const panels = {
       practice: () => this._practicePanel(),
       audio: () => this._audioPanel(),
+      key: () => this._keyInputPanel(),
       appearance: () => this._appearancePanel(),
       data: () => this._dataPanel(),
     };
@@ -55,6 +80,9 @@ export class Settings {
 
   _setTab(id) {
     if (id === this.tab) return;
+    // Leaving the Key Input tab while its Input Monitor is expanded must
+    // release the mic/listeners it may be holding — see _teardownKeyMonitor().
+    if (this.tab === "key") this._teardownKeyMonitor();
     this.tab = id;
     this._rebuild();
   }
@@ -87,6 +115,10 @@ export class Settings {
   }
 
   _toggleExpand(key) {
+    // Collapsing the Input Monitor must release whatever MorseInput/mic
+    // resource it opened — see _teardownKeyMonitor(). Every other
+    // collapsible has no such resource, so this is a no-op for them.
+    if (key === "keyInputMonitor" && this._expanded.has(key)) this._teardownKeyMonitor();
     if (this._expanded.has(key)) this._expanded.delete(key);
     else this._expanded.add(key);
     this._rebuild();
@@ -173,13 +205,33 @@ export class Settings {
     );
 
     const s = this.app.profile.settings;
-    frame.appendChild(this._keyBindRow("Dot key ( . )", "dotKey", s.dotKey));
-    frame.appendChild(this._keyBindRow("Dash key ( - )", "dashKey", s.dashKey));
+    frame.appendChild(this._captureKeyRow("Dot key ( . )", "dotKey", s.dotKey));
+    frame.appendChild(this._captureKeyRow("Dash key ( - )", "dashKey", s.dashKey));
 
     return frame;
   }
 
-  _keyBindRow(label, field, currentCode) {
+  // Every KeyboardEvent.code currently claimed anywhere in Settings, keyed
+  // by field name — see KEY_FIELD_LABELS above for why this spans both the
+  // Send Practice tap-key section and the Key Input HID mapping section.
+  _allKeyBindings() {
+    const s = this.app.profile.settings;
+    return {
+      dotKey: s.dotKey,
+      dashKey: s.dashKey,
+      keyHidCode: s.keyHidCode,
+      keyHidDitCode: s.keyHidDitCode,
+      keyHidDahCode: s.keyHidDahCode,
+    };
+  }
+
+  // Generalized "press a key to bind it" capture row, shared by the
+  // existing Send Practice dot/dash keys and the new Key Input HID mapping
+  // rows. SPACE is always reserved (hold-to-send stays available regardless
+  // of what else is bound), and a chosen key is rejected if it's already
+  // claimed by *any* other binding in the app, not just within the same
+  // section — see _allKeyBindings().
+  _captureKeyRow(label, field, currentCode) {
     const row = el("div", { class: "entry-row" });
     row.appendChild(el("span", { text: label }));
     const valueLbl = el("span", {
@@ -208,9 +260,10 @@ export class Settings {
           this._rebuild();
           return;
         }
-        const other = field === "dotKey" ? "dashKey" : "dotKey";
-        if (this.app.profile.settings[other] === e.code) {
-          await alertDialog("That key is already assigned to the other symbol.");
+        const bindings = this._allKeyBindings();
+        const conflictField = Object.keys(bindings).find((f) => f !== field && bindings[f] === e.code);
+        if (conflictField) {
+          await alertDialog(`That key is already assigned to ${KEY_FIELD_LABELS[conflictField]}.`);
           this._rebuild();
           return;
         }
@@ -307,6 +360,732 @@ export class Settings {
   _toggleKeepAwake() {
     this.app.setKeepAwake(!this.app.profile.settings.keepAwake);
     this._rebuild();
+  }
+
+  // ---- Key Input tab ----
+
+  _keyInputPanel() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+    wrap.appendChild(this._keyIntroSection());
+    wrap.appendChild(this._keyPresetsSection());
+    wrap.appendChild(this._keyConnectionSection());
+    wrap.appendChild(this._keyTypeSection());
+    wrap.appendChild(this._keyMappingSection());
+    if (s.keyConnection === "audio") {
+      wrap.appendChild(this._keyAudioDeviceSection());
+      wrap.appendChild(this._keyAudioPolaritySection());
+    }
+    wrap.appendChild(
+      this._collapsible("keySensitivity", "Sensitivity", `${s.keySensitivity}%`, (valueLbl) =>
+        this._keySensitivitySlider(valueLbl)
+      )
+    );
+    wrap.appendChild(this._keyAdvancedSection());
+    wrap.appendChild(
+      button(
+        "Calibrate Input",
+        () => import("./keyCalibration.js").then((m) => this.app.show(m.KeyCalibration)),
+        "btn-block btn-accent"
+      )
+    );
+    wrap.appendChild(this._collapsible("keyInputMonitor", "Input Monitor", "", () => this._keyMonitorContent()));
+    wrap.appendChild(
+      button("Test Key Mode", () => import("./keyTestMode.js").then((m) => this.app.show(m.KeyTestMode)), "btn-block btn-panel")
+    );
+    if (s.keyConnection === "audio" && s.wpm > AUDIO_RELIABLE_WPM_CEILING) {
+      wrap.appendChild(
+        el("p", {
+          class: "small muted",
+          text: `Heads up — at ${s.wpm} WPM, audio input's contact-bounce filtering is less reliable with this browser-based detector (it works best up to about ${AUDIO_RELIABLE_WPM_CEILING} WPM). A Keyboard/HID interface stays reliable at any speed.`,
+        })
+      );
+    }
+    return wrap;
+  }
+
+  _keyIntroSection() {
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Physical Morse Key" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "A real Morse key or paddle is a mechanical contact device — it needs a compatible " +
+          "USB/keyboard interface or an audio/keyer interface to connect to DitDash.",
+      })
+    );
+    return frame;
+  }
+
+  // Named snapshots of every key* field (see keyPresets.js's
+  // KEY_PRESET_FIELDS) so a learner with more than one key/paddle/interface
+  // can switch between full setups — mapping, sensitivity, calibration and
+  // all — without redoing any of it each time. "Active" is computed from
+  // `activeKeyPresetId` + presetMatches() rather than tracked by hand, so
+  // it can never silently drift out of sync with the fields it describes.
+  _keyPresetsSection() {
+    const s = this.app.profile.settings;
+    const presets = s.keyPresets || [];
+    const activePreset = presets.find((p) => p.id === s.activeKeyPresetId) || null;
+    const modified = activePreset && !presetMatches(s, activePreset);
+
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Keyer Preset" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Save your current key setup so you can switch between multiple keys, paddles, or " +
+          "interfaces without remapping or recalibrating each time.",
+      })
+    );
+
+    const statusRow = el("div", { class: "row" });
+    statusRow.appendChild(el("span", { text: "Active" }));
+    statusRow.appendChild(
+      el("span", {
+        class: activePreset && !modified ? "good" : "muted",
+        text: activePreset ? `${activePreset.name}${modified ? " (changed)" : ""}` : "Custom (not saved as a preset)",
+      })
+    );
+    frame.appendChild(statusRow);
+
+    if (presets.length) {
+      const select = el("select", { class: "text-input" });
+      select.appendChild(el("option", { value: "", text: "Load a saved preset…" }));
+      for (const p of presets) {
+        select.appendChild(el("option", { value: p.id, text: p.name }));
+      }
+      select.value = "";
+      select.addEventListener("change", () => {
+        if (select.value) this._onLoadKeyPreset(select.value);
+      });
+      frame.appendChild(select);
+    }
+
+    const row = el("div", { class: "button-row" });
+    row.appendChild(button("Save as New…", () => this._promptSaveNewKeyPreset(), "btn-panel"));
+    if (activePreset) {
+      row.appendChild(button("Update", () => this._updateKeyPreset(activePreset.id), "btn-panel"));
+      row.appendChild(button("Delete", () => this._deleteKeyPreset(activePreset.id), "btn-danger"));
+    }
+    frame.appendChild(row);
+
+    return frame;
+  }
+
+  async _promptSaveNewKeyPreset() {
+    const name = await promptDialog("Name this keyer preset:", { placeholder: "e.g. Desk paddle" });
+    if (!name) return;
+    const s = this.app.profile.settings;
+    const preset = createKeyPreset(name, s);
+    s.keyPresets = [...(s.keyPresets || []), preset];
+    s.activeKeyPresetId = preset.id;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  _updateKeyPreset(id) {
+    const s = this.app.profile.settings;
+    const presets = s.keyPresets || [];
+    const idx = presets.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+    presets[idx] = { ...createKeyPreset(presets[idx].name, s), id };
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  async _deleteKeyPreset(id) {
+    const s = this.app.profile.settings;
+    const preset = (s.keyPresets || []).find((p) => p.id === id);
+    if (!preset) return;
+    const ok = await confirmDialog(`Delete the "${preset.name}" preset? This can't be undone.`);
+    if (!ok) return;
+    s.keyPresets = s.keyPresets.filter((p) => p.id !== id);
+    if (s.activeKeyPresetId === id) s.activeKeyPresetId = null;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  _onLoadKeyPreset(id) {
+    const s = this.app.profile.settings;
+    const preset = (s.keyPresets || []).find((p) => p.id === id);
+    if (!preset) return;
+    // A different preset can change connection type entirely — any live
+    // Input Monitor was built against the old one and must be torn down.
+    this._teardownKeyMonitor();
+    applyKeyPreset(s, preset);
+    s.activeKeyPresetId = id;
+    this.app.saveProfile();
+    this._rebuild();
+    this._warnIfKeyPresetConflicts(preset);
+  }
+
+  // Presets store raw key codes captured (and conflict-checked) at save
+  // time — but dotKey/dashKey can change afterward, so a saved preset could
+  // theoretically reintroduce the exact double-fire risk _captureKeyRow's
+  // conflict check exists to prevent (see KEY_FIELD_LABELS above). Loading
+  // a preset is never blocked for this — the preset itself is still valid,
+  // just flagged — so the fix is a visible, non-blocking warning rather
+  // than refusing the load.
+  _warnIfKeyPresetConflicts(preset) {
+    const s = this.app.profile.settings;
+    const claimed = [preset.keyHidCode, preset.keyHidDitCode, preset.keyHidDahCode].filter(Boolean);
+    if (claimed.includes(s.dotKey) || claimed.includes(s.dashKey)) {
+      showToast('This preset’s key mapping conflicts with your Send Practice dot/dash key — check Key Mapping below.');
+    }
+  }
+
+  _keyConnectionSection() {
+    const s = this.app.profile.settings;
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Connection" }));
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "How your key/paddle reaches this computer — through hardware that acts like a keyboard, or through an external keyer/interface that generates an audio tone.",
+      })
+    );
+    frame.appendChild(
+      tabBar(
+        [
+          { id: "hid", label: "Keyboard / HID" },
+          { id: "audio", label: "Audio" },
+        ],
+        s.keyConnection,
+        (id) => this._onKeyConnection(id)
+      )
+    );
+    return frame;
+  }
+
+  _onKeyConnection(id) {
+    if (id === this.app.profile.settings.keyConnection) return;
+    // Any live Input Monitor was built against the old connection type's
+    // MorseInput implementation — tear it down before switching.
+    this._teardownKeyMonitor();
+    this.app.profile.settings.keyConnection = id;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  // Key Type (straight/paddle) is deliberately a separate control from
+  // Connection (hid/audio) above — see the design note in the plan: a
+  // double paddle can reach DitDash over either connection, but audio can
+  // never distinguish which paddle contact produced a tone burst (the
+  // microphone only hears one channel), so "Double Paddle" is disabled
+  // (not hidden — the reason is stated inline) whenever Audio is selected.
+  _keyTypeSection() {
+    const s = this.app.profile.settings;
+    const audioSelected = s.keyConnection === "audio";
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Key Type" }));
+
+    const options = [
+      { id: "straight", label: "Straight Key" },
+      { id: "paddle", label: "Double Paddle" },
+    ];
+    const tabs = el("div", { class: "tabs", role: "tablist" });
+    for (const opt of options) {
+      const disabled = audioSelected && opt.id === "paddle";
+      const active = opt.id === s.keyType;
+      tabs.appendChild(
+        el("button", {
+          class: `tab-btn${active ? " tab-btn-active" : ""}`.trim(),
+          text: opt.label,
+          role: "tab",
+          "aria-selected": String(active),
+          disabled: disabled ? "" : undefined,
+          onclick: disabled ? undefined : () => this._onKeyType(opt.id),
+        })
+      );
+    }
+    attachArrowNav(tabs);
+    frame.appendChild(tabs);
+
+    if (audioSelected) {
+      frame.appendChild(
+        el("p", {
+          class: "small muted",
+          text:
+            "Audio input can't tell which paddle contact produced a tone — it only measures a " +
+            "single press/release, so Double Paddle isn't available here. Use a Keyboard/HID " +
+            "interface for independent Dit/Dah detection.",
+        })
+      );
+    } else if (s.keyType === "paddle") {
+      frame.appendChild(
+        el("p", {
+          class: "small muted",
+          text:
+            "Manual paddle input — each paddle press sends one dit or dah directly. DitDash " +
+            "does not yet emulate an electronic keyer's auto-repeat/squeeze (iambic) behavior; " +
+            "if your hardware performs iambic keying itself, DitDash will follow whatever it sends.",
+        })
+      );
+    }
+    return frame;
+  }
+
+  _onKeyType(id) {
+    if (id === this.app.profile.settings.keyType) return;
+    this.app.profile.settings.keyType = id;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  _keyMappingSection() {
+    const s = this.app.profile.settings;
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Key Mapping" }));
+
+    if (s.keyConnection === "audio") {
+      frame.appendChild(
+        el("p", {
+          class: "small muted",
+          text:
+            "Your keyer/interface already shapes dits and dahs in the tone itself — DitDash " +
+            "measures the tone's timing directly, no key mapping needed.",
+        })
+      );
+      return frame;
+    }
+
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          s.keyType === "straight"
+            ? "Set which key your interface sends when the physical key is pressed."
+            : "Set which keys your interface sends for the Dit and Dah paddle contacts.",
+      })
+    );
+
+    if (s.keyType === "straight") {
+      frame.appendChild(this._captureKeyRow("Key", "keyHidCode", s.keyHidCode));
+    } else {
+      frame.appendChild(this._captureKeyRow("Dit key", "keyHidDitCode", s.keyHidDitCode));
+      frame.appendChild(this._captureKeyRow("Dah key", "keyHidDahCode", s.keyHidDahCode));
+      if (s.keyHidDitCode || s.keyHidDahCode) {
+        frame.appendChild(
+          button(
+            s.swapDitDah ? "Swap Dit / Dah (currently swapped)" : "Swap Dit / Dah",
+            () => this._toggleSwapDitDah(),
+            "btn-block btn-panel"
+          )
+        );
+      }
+    }
+    return frame;
+  }
+
+  _toggleSwapDitDah() {
+    const s = this.app.profile.settings;
+    s.swapDitDah = !s.swapDitDah;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  _keySensitivitySlider(valueLbl) {
+    const s = this.app.profile.settings;
+    const input = el("input", { type: "range", min: "0", max: "100", value: String(s.keySensitivity) });
+    input.addEventListener("input", () => {
+      valueLbl.textContent = `${input.value}%`;
+      this._onKeySensitivityLive(Number(input.value));
+    });
+    input.addEventListener("change", () => this._rebuild());
+    return input;
+  }
+
+  // Moving Sensitivity always clears any Advanced override back to "derive
+  // automatically" from Sensitivity; editing an Advanced field directly
+  // (see _keyDebounceRow()) does the reverse — sets an explicit override
+  // Sensitivity no longer drives until it's reset. One rule, two
+  // directions, so the two controls can never silently diverge.
+  _onKeySensitivityLive(v) {
+    const s = this.app.profile.settings;
+    s.keySensitivity = v;
+    s.keyHidDebounceMs = null;
+    s.keyAudioThresholdLevel = null;
+    s.keyAudioMinToneMs = null;
+    this.app.saveProfile();
+  }
+
+  _keyAdvancedSection() {
+    const s = this.app.profile.settings;
+    const overrideActive =
+      s.keyConnection === "audio"
+        ? s.keyAudioThresholdLevel != null || s.keyAudioMinToneMs != null
+        : s.keyHidDebounceMs != null;
+    return this._collapsible("keyAdvanced", "Advanced", overrideActive ? "Custom" : "Automatic", () =>
+      this._keyAdvancedContent()
+    );
+  }
+
+  _keyAdvancedContent() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+    if (s.keyConnection === "audio") {
+      wrap.appendChild(this._keyAudioAdvancedContent());
+    } else {
+      wrap.appendChild(this._keyDebounceRow());
+    }
+    return wrap;
+  }
+
+  _keyDebounceRow() {
+    const s = this.app.profile.settings;
+    const derived = debounceMsFromSensitivity(s.keySensitivity);
+    const effective = s.keyHidDebounceMs ?? derived;
+    const isOverride = s.keyHidDebounceMs != null;
+
+    const wrap = el("div", {});
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "How long a contact transition must hold before DitDash treats it as real keying " +
+          "rather than mechanical bounce. Lower is more responsive; higher filters more aggressively.",
+      })
+    );
+
+    const row = el("div", { class: "row" });
+    row.appendChild(el("span", { text: "Debounce" }));
+    const valueLbl = el("span", {
+      class: isOverride ? "good" : "muted",
+      text: `${effective} ms${isOverride ? " · Custom" : ""}`,
+    });
+    row.appendChild(valueLbl);
+    wrap.appendChild(row);
+
+    const input = el("input", { type: "range", min: "1", max: "30", value: String(effective) });
+    input.addEventListener("input", () => {
+      valueLbl.textContent = `${input.value} ms · Custom`;
+      valueLbl.className = "good";
+      this._onKeyDebounceLive(Number(input.value));
+    });
+    input.addEventListener("change", () => this._rebuild());
+    wrap.appendChild(input);
+
+    if (isOverride) {
+      wrap.appendChild(button("Reset to Sensitivity", () => this._resetKeyDebounce(), "btn-block btn-panel"));
+    }
+    return wrap;
+  }
+
+  _onKeyDebounceLive(ms) {
+    this.app.profile.settings.keyHidDebounceMs = ms;
+    this.app.saveProfile();
+  }
+
+  _resetKeyDebounce() {
+    this.app.profile.settings.keyHidDebounceMs = null;
+    this.app.saveProfile();
+    this._rebuild();
+  }
+
+  // Owns a MorseInput only while this section is expanded — started here,
+  // torn down by _teardownKeyMonitor() from every exit path (collapsing
+  // this section, switching Settings tabs away from Key Input, switching
+  // connection type, or destroying the whole Settings screen). Never
+  // starts a second, independent analysis: the monitor itself (see
+  // keyInputMonitor.js) only ever displays this instance's own events.
+  _keyMonitorContent() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+
+    if (s.keyConnection === "audio" && !s.keyAudioPolarity) {
+      wrap.appendChild(
+        el("p", {
+          class: "small muted",
+          text: "Audio input needs to be calibrated before the Input Monitor can show anything — use Calibrate Input below.",
+        })
+      );
+      return wrap;
+    }
+
+    const mount = el("div", {});
+    wrap.appendChild(mount);
+
+    // A _rebuild() (e.g. dragging an unrelated slider elsewhere on this
+    // panel) replaces this whole DOM subtree, which would otherwise call
+    // this method again — reuse an already-running monitor input across
+    // those incidental rebuilds instead of silently orphaning its mic
+    // stream/listeners and opening a second one. Only a genuine exit path
+    // (see _teardownKeyMonitor()) actually stops it.
+    if (this._keyMonitorHandle) this._keyMonitorHandle.destroy();
+    if (this._keyMonitorInput) {
+      import("./keyInputMonitor.js").then((m) => {
+        if (!this._keyMonitorInput) return;
+        this._keyMonitorHandle = m.mountInputMonitor(mount, this._keyMonitorInput, {
+          mode: s.keyConnection === "audio" ? "audio" : "hid",
+        });
+      });
+      return wrap;
+    }
+
+    this._keyMonitorInput = createMorseInput(s);
+    this._keyMonitorInput
+      .start()
+      .then(() => {
+        import("./keyInputMonitor.js").then((m) => {
+          if (!this._keyMonitorInput) return; // torn down before the import resolved
+          this._keyMonitorHandle = m.mountInputMonitor(mount, this._keyMonitorInput, {
+            mode: s.keyConnection === "audio" ? "audio" : "hid",
+          });
+        });
+      })
+      .catch(() => {
+        this._keyMonitorInput = null;
+        mount.appendChild(el("p", { class: "small error", text: "Couldn't start key input for the monitor." }));
+      });
+
+    return wrap;
+  }
+
+  _teardownKeyMonitor() {
+    if (this._keyMonitorHandle) {
+      this._keyMonitorHandle.destroy();
+      this._keyMonitorHandle = null;
+    }
+    if (this._keyMonitorInput) {
+      this._keyMonitorInput.destroy();
+      this._keyMonitorInput = null;
+    }
+  }
+
+  // enumerateDevices() only returns real device labels once microphone
+  // permission has been granted at least once — this shows a "Grant
+  // access" probe button until then instead of a blank/generic device
+  // list. The probe stream itself is stopped immediately after unlocking
+  // labels and is never handed to AudioKeyInput.
+  _keyAudioDeviceSection() {
+    const frame = el("div", { class: "slider-frame" });
+    frame.appendChild(el("span", { text: "Audio Input" }));
+    frame.appendChild(
+      el("p", { class: "small muted", text: "Which microphone/audio input DitDash listens to for your key." })
+    );
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      frame.appendChild(
+        el("p", { class: "small error", text: "This browser doesn't support audio input." })
+      );
+      return frame;
+    }
+
+    const body = el("div", {});
+    frame.appendChild(body);
+    this._renderAudioDeviceBody(body);
+    return frame;
+  }
+
+  async _renderAudioDeviceBody(body) {
+    let devices;
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch (e) {
+      body.innerHTML = "";
+      body.appendChild(el("p", { class: "small error", text: "Couldn't list audio devices." }));
+      return;
+    }
+
+    const inputs = devices.filter((d) => d.kind === "audioinput");
+    const hasLabels = inputs.some((d) => d.label);
+    body.innerHTML = "";
+
+    if (!hasLabels) {
+      body.appendChild(
+        button(
+          "Grant microphone access",
+          async () => {
+            let probe;
+            try {
+              probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (e) {
+              await alertDialog(
+                "Microphone access was denied. Allow microphone access in your browser settings to select an audio input."
+              );
+              return;
+            }
+            probe.getTracks().forEach((t) => t.stop());
+            this._renderAudioDeviceBody(body);
+          },
+          "btn-block btn-panel"
+        )
+      );
+      return;
+    }
+
+    const s = this.app.profile.settings;
+    const select = el("select", { class: "text-input" });
+    select.appendChild(el("option", { value: "", text: "System default" }));
+    for (const d of inputs) {
+      select.appendChild(el("option", { value: d.deviceId, text: d.label || d.deviceId }));
+    }
+    select.value = s.keyAudioDeviceId || "";
+    select.addEventListener("change", () => {
+      s.keyAudioDeviceId = select.value || null;
+      this.app.saveProfile();
+    });
+    body.appendChild(select);
+  }
+
+  _keyAudioPolaritySection() {
+    const s = this.app.profile.settings;
+    const frame = el("div", { class: "slider-frame" });
+    const row = el("div", { class: "row" });
+    row.appendChild(el("span", { text: "Calibration" }));
+    row.appendChild(
+      el("span", {
+        class: s.keyAudioPolarity ? "good" : "muted",
+        text: s.keyAudioPolarity ? "Calibrated" : "Not calibrated",
+      })
+    );
+    frame.appendChild(row);
+    frame.appendChild(
+      el("p", {
+        class: "small muted",
+        text: s.keyAudioPolarity
+          ? "Audio input is calibrated and ready to use."
+          : "Audio input needs to be calibrated before it can detect your key — every audio interface's " +
+            "hardware behaves a little differently, so there's no safe default to guess from. Use Calibrate " +
+            "Input below.",
+      })
+    );
+    return frame;
+  }
+
+  _keyAudioAdvancedContent() {
+    const s = this.app.profile.settings;
+    const wrap = el("div", {});
+
+    const derivedThreshold = thresholdFromSensitivity(s.keySensitivity);
+    const thresholdOverride = s.keyAudioThresholdLevel != null;
+    const effectiveThreshold = s.keyAudioThresholdLevel ?? derivedThreshold;
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "How large a level change DitDash treats as a real key press versus background noise. " +
+          "Lower is more sensitive; higher requires a stronger signal.",
+      })
+    );
+    const thresholdRow = el("div", { class: "row" });
+    thresholdRow.appendChild(el("span", { text: "Detection threshold" }));
+    const thresholdLbl = el("span", {
+      class: thresholdOverride ? "good" : "muted",
+      text: `${effectiveThreshold.toFixed(3)}${thresholdOverride ? " · Custom" : ""}`,
+    });
+    thresholdRow.appendChild(thresholdLbl);
+    wrap.appendChild(thresholdRow);
+    const thresholdInput = el("input", {
+      type: "range",
+      min: "0.005",
+      max: "0.5",
+      step: "0.005",
+      value: String(effectiveThreshold),
+    });
+    thresholdInput.addEventListener("input", () => {
+      const v = Number(thresholdInput.value);
+      thresholdLbl.textContent = `${v.toFixed(3)} · Custom`;
+      thresholdLbl.className = "good";
+      s.keyAudioThresholdLevel = v;
+      this.app.saveProfile();
+    });
+    thresholdInput.addEventListener("change", () => this._rebuild());
+    wrap.appendChild(thresholdInput);
+    if (thresholdOverride) {
+      wrap.appendChild(
+        button(
+          "Reset to Sensitivity",
+          () => {
+            s.keyAudioThresholdLevel = null;
+            this.app.saveProfile();
+            this._rebuild();
+          },
+          "btn-block btn-panel"
+        )
+      );
+    }
+
+    wrap.appendChild(el("div", { class: "divider" }));
+
+    const hysteresisRow = el("div", { class: "row" });
+    hysteresisRow.appendChild(el("span", { text: "Hysteresis" }));
+    const hysteresisLbl = el("span", { text: (s.keyAudioHysteresis ?? 0.02).toFixed(3) });
+    hysteresisRow.appendChild(hysteresisLbl);
+    wrap.appendChild(hysteresisRow);
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text: "A small margin around the threshold so noise sitting right at the edge can't rapidly flicker the detector.",
+      })
+    );
+    const hysteresisInput = el("input", {
+      type: "range",
+      min: "0",
+      max: "0.1",
+      step: "0.005",
+      value: String(s.keyAudioHysteresis ?? 0.02),
+    });
+    hysteresisInput.addEventListener("input", () => {
+      const v = Number(hysteresisInput.value);
+      hysteresisLbl.textContent = v.toFixed(3);
+      s.keyAudioHysteresis = v;
+      this.app.saveProfile();
+    });
+    wrap.appendChild(hysteresisInput);
+
+    wrap.appendChild(el("div", { class: "divider" }));
+
+    const minToneOverride = s.keyAudioMinToneMs != null;
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Minimum tone/silence duration before DitDash accepts it as real keying rather than noise. " +
+          "Automatically scaled to your Character Speed unless set here.",
+      })
+    );
+    const minToneRow = el("div", { class: "row" });
+    minToneRow.appendChild(el("span", { text: "Min. tone duration" }));
+    const minToneLbl = el("span", {
+      class: minToneOverride ? "good" : "muted",
+      text: minToneOverride ? `${s.keyAudioMinToneMs} ms · Custom` : "Automatic",
+    });
+    minToneRow.appendChild(minToneLbl);
+    wrap.appendChild(minToneRow);
+    const minToneInput = el("input", {
+      type: "range",
+      min: "17",
+      max: "40",
+      value: String(s.keyAudioMinToneMs ?? 17),
+    });
+    minToneInput.addEventListener("input", () => {
+      const v = Number(minToneInput.value);
+      minToneLbl.textContent = `${v} ms · Custom`;
+      minToneLbl.className = "good";
+      s.keyAudioMinToneMs = v;
+      this.app.saveProfile();
+    });
+    minToneInput.addEventListener("change", () => this._rebuild());
+    wrap.appendChild(minToneInput);
+    if (minToneOverride) {
+      wrap.appendChild(
+        button(
+          "Reset to Automatic",
+          () => {
+            s.keyAudioMinToneMs = null;
+            this.app.saveProfile();
+            this._rebuild();
+          },
+          "btn-block btn-panel"
+        )
+      );
+    }
+
+    return wrap;
   }
 
   // ---- Appearance tab ----
@@ -581,5 +1360,7 @@ export class Settings {
     import("./mainMenu.js").then((m) => this.app.show(m.MainMenu));
   }
 
-  destroy() {}
+  destroy() {
+    this._teardownKeyMonitor();
+  }
 }

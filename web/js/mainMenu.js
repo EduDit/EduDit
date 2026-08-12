@@ -18,6 +18,7 @@ const PRACTICE_OPTIONS = [
   { tab: "receive", title: "Receive", desc: "Hear Morse and identify the character." },
   { tab: "send", title: "Send", desc: "See a character and key it." },
   { tab: "listen", title: "Listen", desc: "Build your ear without answering." },
+  { tab: "key", title: "Key Practice", desc: "Send Morse with a real physical key or paddle." },
   { tab: "callsigns", title: "Callsigns", desc: "Practice realistic radio exchanges." },
 ];
 
