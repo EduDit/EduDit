@@ -105,7 +105,8 @@ export function defaultProfile() {
       // same way dotKey/dashKey above already work.
       keyType: "straight", // "straight" | "paddle"
       keyConnection: "hid", // "hid" (keyboard/HID-emulating interface) | "audio"
-      keyHidCode: null, // straight key: KeyboardEvent.code
+      keyHidEventSource: "keyboard", // "keyboard" | "mouse" — which DOM events the "hid" interface actually sends
+      keyHidCode: null, // straight key: KeyboardEvent.code, or "MouseN" (see morseInput/deviceEventKeyInput.js)
       keyHidDitCode: null, // double paddle: dit contact's KeyboardEvent.code
       keyHidDahCode: null, // double paddle: dah contact's KeyboardEvent.code
       keyHidDebounceMs: null, // null = derive from keySensitivity

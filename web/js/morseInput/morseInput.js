@@ -3,11 +3,11 @@
 // EventTarget-based { start(), destroy(), addEventListener } surface, so
 // every consumer (keyPractice.js, keyTestMode.js, Settings' Input Monitor,
 // keyCalibration.js) is written against this one function and never
-// imports KeyboardKeyInput/AudioKeyInput directly.
+// imports DeviceEventKeyInput/AudioKeyInput directly.
 
-import { KeyboardKeyInput } from "./keyboardKeyInput.js";
+import { DeviceEventKeyInput } from "./deviceEventKeyInput.js";
 import { AudioKeyInput } from "./audioKeyInput.js";
 
 export function createMorseInput(settings) {
-  return settings.keyConnection === "audio" ? new AudioKeyInput(settings) : new KeyboardKeyInput(settings);
+  return settings.keyConnection === "audio" ? new AudioKeyInput(settings) : new DeviceEventKeyInput(settings);
 }

@@ -15,7 +15,7 @@
 
 import { el, button, pageHeader } from "./dom.js";
 import { AudioKeyInput } from "./morseInput/audioKeyInput.js";
-import { KeyboardKeyInput } from "./morseInput/keyboardKeyInput.js";
+import { DeviceEventKeyInput } from "./morseInput/deviceEventKeyInput.js";
 
 const AUDIO_SAMPLE_MS = 2000;
 const HID_BOUNCE_TEST_MS = 3000;
@@ -236,22 +236,24 @@ export class KeyCalibration {
       return;
     }
 
+    const verb = s.keyHidEventSource === "mouse" ? "Click" : "Tap";
     this._renderMount(
       el("div", { class: "slider-frame" }, [
         el("p", {
           text: "This checks your key's contact for bounce (rapid, unintended extra transitions) so DitDash can filter it correctly.",
         }),
-        el("p", { class: "small muted", text: "Tap your key normally, several times, once you click Start." }),
+        el("p", { class: "small muted", text: `${verb} your key normally, several times, once you click Start.` }),
         button("Start", () => this._runHidBounceTest(), "btn-block btn-accent"),
       ])
     );
   }
 
   async _runHidBounceTest() {
+    const verb = this.app.profile.settings.keyHidEventSource === "mouse" ? "Click" : "Tap";
     this._renderMount(
       el("div", { class: "slider-frame center" }, [
         el("p", { text: "Recording…" }),
-        el("p", { class: "small muted", text: "Tap your key normally, several times." }),
+        el("p", { class: "small muted", text: `${verb} your key normally, several times.` }),
       ])
     );
 
@@ -259,7 +261,7 @@ export class KeyCalibration {
     // shows up in the raw stream instead of being filtered before we can
     // measure it — the real, filtered detection settings are unaffected
     // until Apply below.
-    this.hidInput = new KeyboardKeyInput({ ...this.app.profile.settings, keyHidDebounceMs: 0 });
+    this.hidInput = new DeviceEventKeyInput({ ...this.app.profile.settings, keyHidDebounceMs: 0 });
     this._rawEvents = [];
     const onRaw = (e) => this._rawEvents.push(e.detail);
     this.hidInput.addEventListener("morsekeyraw", onRaw);

@@ -9,7 +9,7 @@ import { confirmDialog, alertDialog, promptDialog } from "./dialog.js";
 import { showShortcutsHelp } from "./shortcutsHelp.js";
 import { APP_VERSION } from "./version.js";
 import { serializeProfile, parseImportedProfile } from "./backup.js";
-import { debounceMsFromSensitivity } from "./morseInput/keyboardKeyInput.js";
+import { debounceMsFromSensitivity, mouseBindingCode } from "./morseInput/deviceEventKeyInput.js";
 import { thresholdFromSensitivity, AUDIO_RELIABLE_WPM_CEILING } from "./morseInput/audioKeyInput.js";
 import { createMorseInput } from "./morseInput/morseInput.js";
 import { createKeyPreset, applyKeyPreset, presetMatches } from "./keyPresets.js";
@@ -225,13 +225,15 @@ export class Settings {
     };
   }
 
-  // Generalized "press a key to bind it" capture row, shared by the
-  // existing Send Practice dot/dash keys and the new Key Input HID mapping
-  // rows. SPACE is always reserved (hold-to-send stays available regardless
-  // of what else is bound), and a chosen key is rejected if it's already
-  // claimed by *any* other binding in the app, not just within the same
-  // section — see _allKeyBindings().
-  _captureKeyRow(label, field, currentCode) {
+  // Generalized "press a key (or click a mouse button) to bind it" capture
+  // row, shared by the existing Send Practice dot/dash keys (always
+  // keyboard) and the new Key Input HID mapping rows (keyboard or mouse,
+  // per `source` — see settings.keyHidEventSource). SPACE is always
+  // reserved (hold-to-send stays available regardless of what else is
+  // bound), and a chosen binding is rejected if it's already claimed by
+  // *any* other binding in the app, not just within the same section — see
+  // _allKeyBindings().
+  _captureKeyRow(label, field, currentCode, { source = "keyboard" } = {}) {
     const row = el("div", { class: "entry-row" });
     row.appendChild(el("span", { text: label }));
     const valueLbl = el("span", {
@@ -240,38 +242,62 @@ export class Settings {
     });
     row.appendChild(valueLbl);
 
+    const finishCapture = async (code) => {
+      delete setBtn.dataset.listening;
+      setBtn.textContent = "Set";
+      if (code === null) {
+        this._rebuild(); // cancelled
+        return;
+      }
+      if (code === "Space") {
+        await alertDialog("SPACE is reserved for hold-to-send. Pick a different key.");
+        this._rebuild();
+        return;
+      }
+      const bindings = this._allKeyBindings();
+      const conflictField = Object.keys(bindings).find((f) => f !== field && bindings[f] === code);
+      if (conflictField) {
+        await alertDialog(`That is already assigned to ${KEY_FIELD_LABELS[conflictField]}.`);
+        this._rebuild();
+        return;
+      }
+      this.app.profile.settings[field] = code;
+      this.app.saveProfile();
+      this._rebuild();
+    };
+
     const setBtn = button("Set", () => {
       if (setBtn.dataset.listening) return;
       setBtn.dataset.listening = "1";
-      setBtn.textContent = "Press a key… (Esc to cancel)";
       valueLbl.textContent = "…";
       valueLbl.className = "muted";
-      const onKey = async (e) => {
-        e.preventDefault();
-        document.removeEventListener("keydown", onKey, true);
-        delete setBtn.dataset.listening;
-        setBtn.textContent = "Set";
-        if (e.code === "Escape") {
-          this._rebuild();
-          return;
-        }
-        if (e.code === "Space") {
-          await alertDialog("SPACE is reserved for hold-to-send. Pick a different key.");
-          this._rebuild();
-          return;
-        }
-        const bindings = this._allKeyBindings();
-        const conflictField = Object.keys(bindings).find((f) => f !== field && bindings[f] === e.code);
-        if (conflictField) {
-          await alertDialog(`That key is already assigned to ${KEY_FIELD_LABELS[conflictField]}.`);
-          this._rebuild();
-          return;
-        }
-        this.app.profile.settings[field] = e.code;
-        this.app.saveProfile();
-        this._rebuild();
-      };
-      document.addEventListener("keydown", onKey, true);
+
+      if (source === "mouse") {
+        setBtn.textContent = "Click the button… (Esc to cancel)";
+        const onMouseDown = (e) => {
+          e.preventDefault();
+          document.removeEventListener("mousedown", onMouseDown, true);
+          document.removeEventListener("keydown", onEscape, true);
+          finishCapture(mouseBindingCode(e.button));
+        };
+        const onEscape = (e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          document.removeEventListener("mousedown", onMouseDown, true);
+          document.removeEventListener("keydown", onEscape, true);
+          finishCapture(null);
+        };
+        document.addEventListener("mousedown", onMouseDown, true);
+        document.addEventListener("keydown", onEscape, true);
+      } else {
+        setBtn.textContent = "Press a key… (Esc to cancel)";
+        const onKey = (e) => {
+          e.preventDefault();
+          document.removeEventListener("keydown", onKey, true);
+          finishCapture(e.code === "Escape" ? null : e.code);
+        };
+        document.addEventListener("keydown", onKey, true);
+      }
     });
     row.appendChild(setBtn);
 
@@ -652,21 +678,39 @@ export class Settings {
       return frame;
     }
 
+    // Most USB keyer adapters emulate a keyboard, but some simpler
+    // interfaces (e.g. foot-pedal-style adapters) emulate a mouse button
+    // instead — same digital on/off contact, different DOM event pair.
+    // This only changes HOW a binding is captured/read; nothing downstream
+    // (decode/scoring/timing) knows or cares which it was.
+    frame.appendChild(
+      tabBar(
+        [
+          { id: "keyboard", label: "Keyboard" },
+          { id: "mouse", label: "Mouse Button" },
+        ],
+        s.keyHidEventSource || "keyboard",
+        (id) => this._onKeyHidEventSource(id)
+      )
+    );
+
+    const isMouse = s.keyHidEventSource === "mouse";
     frame.appendChild(
       el("p", {
         class: "small muted",
         text:
           s.keyType === "straight"
-            ? "Set which key your interface sends when the physical key is pressed."
-            : "Set which keys your interface sends for the Dit and Dah paddle contacts.",
+            ? `Set which ${isMouse ? "mouse button" : "key"} your interface sends when the physical key is pressed.`
+            : `Set which ${isMouse ? "mouse buttons" : "keys"} your interface sends for the Dit and Dah paddle contacts.`,
       })
     );
 
+    const captureOpts = { source: isMouse ? "mouse" : "keyboard" };
     if (s.keyType === "straight") {
-      frame.appendChild(this._captureKeyRow("Key", "keyHidCode", s.keyHidCode));
+      frame.appendChild(this._captureKeyRow("Key", "keyHidCode", s.keyHidCode, captureOpts));
     } else {
-      frame.appendChild(this._captureKeyRow("Dit key", "keyHidDitCode", s.keyHidDitCode));
-      frame.appendChild(this._captureKeyRow("Dah key", "keyHidDahCode", s.keyHidDahCode));
+      frame.appendChild(this._captureKeyRow("Dit key", "keyHidDitCode", s.keyHidDitCode, captureOpts));
+      frame.appendChild(this._captureKeyRow("Dah key", "keyHidDahCode", s.keyHidDahCode, captureOpts));
       if (s.keyHidDitCode || s.keyHidDahCode) {
         frame.appendChild(
           button(
@@ -677,7 +721,39 @@ export class Settings {
         );
       }
     }
+
+    if (isMouse) {
+      const leftMapped = [s.keyHidCode, s.keyHidDitCode, s.keyHidDahCode].includes(mouseBindingCode(0));
+      if (leftMapped) {
+        frame.appendChild(
+          el("p", {
+            class: "small muted",
+            text:
+              "Left-click is mapped — this may fire alongside ordinary button clicks on this screen " +
+              "(e.g. Hint, Back). Middle, Right, Back, or Forward click are usually safer if your " +
+              "adapter allows a different button.",
+          })
+        );
+      }
+    }
+
     return frame;
+  }
+
+  _onKeyHidEventSource(id) {
+    const s = this.app.profile.settings;
+    if (id === (s.keyHidEventSource || "keyboard")) return;
+    // A binding captured under the old event source lives in a different
+    // code namespace (KeyboardEvent.code vs "MouseN") and would silently
+    // never match under the new one — clear it so Key Mapping visibly
+    // shows "Not set" rather than a stale, non-functional binding.
+    s.keyHidEventSource = id;
+    s.keyHidCode = null;
+    s.keyHidDitCode = null;
+    s.keyHidDahCode = null;
+    this._teardownKeyMonitor();
+    this.app.saveProfile();
+    this._rebuild();
   }
 
   _toggleSwapDitDah() {

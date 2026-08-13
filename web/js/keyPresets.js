@@ -10,6 +10,7 @@
 export const KEY_PRESET_FIELDS = [
   "keyType",
   "keyConnection",
+  "keyHidEventSource",
   "keyHidCode",
   "keyHidDitCode",
   "keyHidDahCode",

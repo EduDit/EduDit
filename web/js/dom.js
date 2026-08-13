@@ -44,9 +44,15 @@ export function button(text, onClick, extraClass = "") {
 }
 
 // Turns a KeyboardEvent.code like "Digit1" or "KeyQ" into a short label
-// people recognize, e.g. "1" or "Q".
+// people recognize, e.g. "1" or "Q" — or a "MouseN" binding (see
+// morseInput/deviceEventKeyInput.js) into a mouse-button name.
+const MOUSE_BUTTON_NAMES = ["Left Click", "Middle Click", "Right Click", "Back Button", "Forward Button"];
 export function keyLabel(code) {
   if (!code) return "";
+  if (code.startsWith("Mouse")) {
+    const n = Number(code.slice(5));
+    return MOUSE_BUTTON_NAMES[n] || `Mouse Button ${n}`;
+  }
   if (code.startsWith("Key")) return code.slice(3);
   if (code.startsWith("Digit")) return code.slice(5);
   if (code === "Space") return "Space";
