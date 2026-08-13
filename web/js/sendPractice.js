@@ -232,6 +232,12 @@ export class SendPractice {
       const dashName = s.dashKey ? keyLabel(s.dashKey) : "?";
       text += `, or tap ${dotName} for dot / ${dashName} for dash`;
     }
+    // Mouse-mode physical key: makes clear this is normal operation, not a
+    // malfunction, when a click doesn't land on a button the way expected.
+    if (this.morseInput && s.keyConnection === "hid" && s.keyHidEventSource === "mouse") {
+      const label = s.keyType === "straight" && s.keyHidCode ? keyLabel(s.keyHidCode) : "mouse button";
+      text += `. Morse key: ${label} · Esc releases the mouse`;
+    }
     this.keyBindLbl.textContent = text;
   }
 

@@ -106,6 +106,11 @@ export function defaultProfile() {
       keyType: "straight", // "straight" | "paddle"
       keyConnection: "hid", // "hid" (keyboard/HID-emulating interface) | "audio"
       keyHidEventSource: "keyboard", // "keyboard" | "mouse" — which DOM events the "hid" interface actually sends
+      // Mouse mode only: a mapped click is treated as a real mouse click
+      // (not Morse input) if it follows recent cursor movement — the
+      // adapter never moves the cursor itself. Best-effort, not device
+      // identification — see morseInput/deviceEventKeyInput.js.
+      keyHidMovePassthrough: true,
       keyHidCode: null, // straight key: KeyboardEvent.code, or "MouseN" (see morseInput/deviceEventKeyInput.js)
       keyHidDitCode: null, // double paddle: dit contact's KeyboardEvent.code
       keyHidDahCode: null, // double paddle: dah contact's KeyboardEvent.code

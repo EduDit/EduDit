@@ -729,9 +729,9 @@ export class Settings {
           el("p", {
             class: "small muted",
             text:
-              "Left-click is mapped — this may fire alongside ordinary button clicks on this screen " +
-              "(e.g. Hint, Back). Middle, Right, Back, or Forward click are usually safer if your " +
-              "adapter allows a different button.",
+              "Your Morse key behaves like a USB mouse and sends Left Click. DitDash can use that click " +
+              "as Morse input while still allowing normal mouse clicks when possible. If a click doesn't " +
+              "go through the way you expect, press Esc to release the mouse for a moment.",
           })
         );
       }
@@ -806,8 +806,41 @@ export class Settings {
       wrap.appendChild(this._keyAudioAdvancedContent());
     } else {
       wrap.appendChild(this._keyDebounceRow());
+      if (s.keyHidEventSource === "mouse") wrap.appendChild(this._keyMovePassthroughRow());
     }
     return wrap;
+  }
+
+  // Mouse mode only — a fallback knob for the rare case the movement
+  // heuristic misbehaves for a given adapter/setup, not something a normal
+  // user needs to understand to use their key. See deviceEventKeyInput.js.
+  _keyMovePassthroughRow() {
+    const s = this.app.profile.settings;
+    const on = s.keyHidMovePassthrough !== false;
+    const wrap = el("div", { style: { marginTop: "12px" } });
+    wrap.appendChild(
+      el("p", {
+        class: "small muted",
+        text:
+          "Allow normal mouse clicks after recent cursor movement. This helps tell real mouse clicks " +
+          "apart from a mouse-emulating Morse key, but it's a best-effort guess, not a guarantee.",
+      })
+    );
+    wrap.appendChild(
+      button(
+        on ? "Movement pass-through: On" : "Movement pass-through: Off",
+        () => this._toggleMovePassthrough(),
+        "btn-block btn-panel"
+      )
+    );
+    return wrap;
+  }
+
+  _toggleMovePassthrough() {
+    const s = this.app.profile.settings;
+    s.keyHidMovePassthrough = !(s.keyHidMovePassthrough !== false);
+    this.app.saveProfile();
+    this._rebuild();
   }
 
   _keyDebounceRow() {

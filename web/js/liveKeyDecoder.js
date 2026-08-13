@@ -11,7 +11,7 @@
 // timing/decoding system.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs } from "./dom.js";
+import { el, button, morseGlyphs, keyLabel } from "./dom.js";
 import { unitMs, DOT_THRESHOLD_UNITS, decodeGapMs } from "./timing.js";
 
 export class LiveKeyDecoder {
@@ -95,6 +95,16 @@ export function mountLiveKeyingUI(container, app, morseInput, { showMonitor = fa
   wrap.appendChild(
     el("p", { class: "small muted", text: "Key naturally — decoded characters appear here as you go." })
   );
+
+  // Mouse-mode physical key: makes clear this is normal operation, not a
+  // malfunction, when a click doesn't land on a button the way expected.
+  const s = app.profile.settings;
+  if (s.keyConnection === "hid" && s.keyHidEventSource === "mouse") {
+    const label = s.keyType === "straight" && s.keyHidCode ? keyLabel(s.keyHidCode) : "mouse button";
+    wrap.appendChild(
+      el("p", { class: "small muted", text: `Morse key: ${label} · Esc releases the mouse` })
+    );
+  }
 
   const textLine = el("p", { class: "heading", "aria-live": "polite", text: "" });
   wrap.appendChild(textLine);
