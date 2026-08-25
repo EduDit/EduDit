@@ -84,6 +84,14 @@ export function defaultProfile() {
       wpm: 15,
       freq: 600,
       volume: 70,
+      // Governs everything about *producing* Morse (Send Practice, Key
+      // Practice, Free Keying): the dot/dash hold-time threshold, the
+      // decode gap, and physical-key debounce timing. Deliberately
+      // independent of `wpm` (which drives Receive/Listen/Callsigns) — a
+      // beginner can only physically key a fraction of the speed they can
+      // already recognize by ear, so defaulting well below the recommended
+      // 22 WPM receiving speed keeps Send Practice attainable from day one.
+      sendWpm: 10,
       // null = off, spacing matches character speed. See farnsworth.js.
       farnsworthWpm: null,
       dotKey: null,

@@ -62,7 +62,10 @@ export class AudioKeyInput extends EventTarget {
     this._analyser = null;
     this._buf = null;
     this._isOn = false;
-    this._debounce = new DebounceFilter(effectiveMinToneMs(settings.wpm, settings.keyAudioMinToneMs));
+    // sendWpm, not wpm — this debounce window tracks the physical keying
+    // speed the user actually produces, not the Character Speed used for
+    // Receive/Listen. See the matching comment in sendPractice.js.
+    this._debounce = new DebounceFilter(effectiveMinToneMs(settings.sendWpm, settings.keyAudioMinToneMs));
   }
 
   // Refuses to start until Calibration has determined a polarity — there is
@@ -144,7 +147,7 @@ export class AudioKeyInput extends EventTarget {
         ? level < threshold + hysteresis
         : level < threshold;
 
-    this._debounce.setMinMs(effectiveMinToneMs(s.wpm, s.keyAudioMinToneMs));
+    this._debounce.setMinMs(effectiveMinToneMs(s.sendWpm, s.keyAudioMinToneMs));
     if (!this._calibrating && rawOn !== this._isOn && this._debounce.accept(rawOn ? "down" : "up", ts)) {
       this._isOn = rawOn;
       this.dispatchEvent(

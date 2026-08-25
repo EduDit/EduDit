@@ -9,7 +9,7 @@
 
 import * as storage from "./storage.js";
 import * as codes from "./codes.js";
-import { el, button, tabBar, pageHeader, attachArrowNav } from "./dom.js";
+import { el, button, tabBar, pageHeader, attachArrowNav, emptyState } from "./dom.js";
 import { accuracyRows, WEAK_REVIEW_POOL_SIZE } from "./learning.js";
 import { ACHIEVEMENTS, overallAccuracyPct } from "./achievements.js";
 import { streakDays, todayKey } from "./dailyPractice.js";
@@ -51,7 +51,7 @@ export class Scoreboard {
 
     const names = storage.listProfiles();
     if (names.length === 0) {
-      wrap.appendChild(el("p", { class: "small muted", text: "No profiles yet." }));
+      wrap.appendChild(emptyState("No profiles yet."));
       this.root.appendChild(wrap);
       return;
     }
@@ -101,16 +101,19 @@ export class Scoreboard {
 
     const card = el("div", { class: "card hero-card" });
     card.appendChild(el("span", { class: "badge", text: "Are You Improving?" }));
+
+    if (pct == null) {
+      card.appendChild(emptyState("Practice a little and your accuracy will show up here."));
+      return card;
+    }
+
     card.appendChild(
-      el("div", { class: "hero-number", text: pct != null ? `${Math.round(pct)}%` : "—", style: { margin: "8px 0 2px" } })
+      el("div", { class: "hero-number", text: `${Math.round(pct)}%`, style: { margin: "8px 0 2px" } })
     );
     card.appendChild(
       el("p", {
         class: "small muted",
-        text:
-          pct != null
-            ? `${entry.name}'s overall accuracy${dayStreak > 0 ? `   ·   ${dayStreak}-day streak` : ""}`
-            : "Practice a little and your accuracy will show up here.",
+        text: `${entry.name}'s overall accuracy${dayStreak > 0 ? `   ·   ${dayStreak}-day streak` : ""}`,
       })
     );
     return card;
@@ -128,9 +131,7 @@ export class Scoreboard {
     );
 
     if (earnedList.length === 0) {
-      wrap.appendChild(
-        el("p", { class: "small muted", text: "Keep practicing — your first achievement is closer than you think." })
-      );
+      wrap.appendChild(emptyState("Keep practicing — your first achievement is closer than you think."));
     } else {
       const badgeRow = el("div", { class: "badge-row" });
       for (const a of earnedList) {
@@ -222,9 +223,7 @@ export class Scoreboard {
     const rows = accuracyRows(seen || {}, mistakes || {}, codes.LEARNING_ORDER);
 
     if (rows.length === 0) {
-      wrap.appendChild(
-        el("p", { class: "small muted", text: `No ${this.innerTab} practice recorded yet.` })
-      );
+      wrap.appendChild(emptyState(`No ${this.innerTab} practice recorded yet.`));
       return wrap;
     }
 
@@ -278,10 +277,9 @@ export class Scoreboard {
     const wrap = el("div", {});
     wrap.appendChild(el("p", { class: "heading", text: `${entry.name} — activity` }));
     wrap.appendChild(
-      el("p", {
-        class: "small muted",
-        text: dayStreak > 0 ? `${dayStreak}-day practice streak.` : "No recent activity streak yet.",
-      })
+      dayStreak > 0
+        ? el("p", { class: "small muted", text: `${dayStreak}-day practice streak.` })
+        : emptyState("No recent activity streak yet.")
     );
     wrap.appendChild(this._activityBars(p.daily_practice || {}));
     return wrap;

@@ -1,9 +1,9 @@
 import { test, assert, assertEqual } from "./testkit.js";
 import { LiveKeyDecoder } from "./liveKeyDecoder.js";
 
-function fakeApp(wpm = 20) {
+function fakeApp(sendWpm = 20) {
   return {
-    profile: { settings: { wpm, freq: 600, volume: 70 } },
+    profile: { settings: { sendWpm, freq: 600, volume: 70 } },
     audio: { playPattern() {} },
   };
 }

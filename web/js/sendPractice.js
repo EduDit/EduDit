@@ -136,6 +136,23 @@ export class SendPractice {
     this._updateKeyBindHint();
     wrap.appendChild(this.keyBindLbl);
 
+    // This screen (reached directly from Journey/Lessons/Home/Session
+    // Summary — see the file-header comment in practiceHub.js) has no tab
+    // bar of its own, so a learner with a real key/paddle who lands here
+    // has no way to discover that "Key Practice" is where it's actually
+    // wired up (this.morseInput is only ever attached there). Only a
+    // discoverability nudge, not a requirement — SPACE/mouse/touch above
+    // all still work with no physical key at all.
+    if (!this.morseInput) {
+      wrap.appendChild(
+        button(
+          "Have a physical Morse key or paddle?",
+          () => import("./practiceHub.js").then((m) => this.app.show(m.PracticeHub, { tab: "key" })),
+          "btn-panel btn-block-inline"
+        )
+      );
+    }
+
     const hintRow = el("div", { class: "button-row" });
     hintRow.appendChild(button("Hear it  ▶", () => this._playTarget(), "btn-panel"));
     hintRow.appendChild(button("Hint  ?", () => this.showHint(), "btn-panel"));
@@ -258,13 +275,18 @@ export class SendPractice {
 
   _playTarget() {
     const s = this.app.profile.settings;
-    this.app.audio.playPattern(codes.MORSE[this.target], s.wpm, s.freq, s.volume);
+    this.app.audio.playPattern(codes.MORSE[this.target], s.sendWpm, s.freq, s.volume);
   }
 
   _renderPattern() {
     this.patternLbl.innerHTML = "";
     if (this.pattern) {
-      this.patternLbl.appendChild(morseGlyphs(this.pattern));
+      const glyphs = morseGlyphs(this.pattern);
+      // Only the newest symbol gets an entrance animation (reusing the
+      // existing pop-in keyframe) — the rest of the row is already-settled
+      // content, not something that should visibly re-animate every keystroke.
+      if (glyphs.lastElementChild) glyphs.lastElementChild.classList.add("pop-in");
+      this.patternLbl.appendChild(glyphs);
     } else {
       this.patternLbl.appendChild(el("span", { class: "muted", text: "—" }));
     }
@@ -275,8 +297,13 @@ export class SendPractice {
     setTimeout(() => this.keyCircle.classList.remove("active"), 120);
   }
 
+  // Uses sendWpm (not wpm) — see the field comment in storage.js. Every
+  // keying-related computation in this file (dot/dash threshold, decode
+  // gap, the sidetone for a just-keyed symbol) goes through this, so
+  // Send Practice always tracks the learner's own send speed rather than
+  // the Character Speed used for Receive/Listen.
   _unitMs() {
-    return unitMs(this.app.profile.settings.wpm);
+    return unitMs(this.app.profile.settings.sendWpm);
   }
 
   onPress() {
@@ -324,7 +351,7 @@ export class SendPractice {
     this._renderPattern();
 
     const s = this.app.profile.settings;
-    this.app.audio.playPattern(symbol, s.wpm, s.freq, s.volume);
+    this.app.audio.playPattern(symbol, s.sendWpm, s.freq, s.volume);
 
     const unit = this._unitMs();
     const gap = Math.max(DECODE_GAP_UNITS * unit, DECODE_GAP_MIN_MS);

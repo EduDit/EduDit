@@ -70,6 +70,7 @@ class App {
       }
       this.root.innerHTML = "";
       this._view = new ViewClass(this.root, this, options);
+      this._animateEnter(this.root);
       return;
     }
 
@@ -81,6 +82,23 @@ class App {
     this._view = new ViewClass(this.shell.contentEl, this, options);
     this.shell.setActive(ViewClass.navId || null);
     this.shell.refreshProfile();
+    this._animateEnter(this.shell.contentEl);
+  }
+
+  // A short fade + rise on whichever container just received a new screen's
+  // content — see the .view-enter/.view-enter-active rules in styles.css.
+  // Forces a reflow before flipping to the "active" state (same restart
+  // trick used by _setStatus() in receivePractice.js/sendPractice.js) so the
+  // transition reliably plays even though the container itself is reused,
+  // not recreated, between screens.
+  _animateEnter(container) {
+    container.classList.remove("view-enter-active");
+    container.classList.add("view-enter");
+    void container.offsetWidth;
+    requestAnimationFrame(() => {
+      container.classList.remove("view-enter");
+      container.classList.add("view-enter-active");
+    });
   }
 
   loadProfile(name) {

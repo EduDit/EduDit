@@ -81,6 +81,40 @@ export function showToast(text, { duration = 4500 } = {}) {
   return remove;
 }
 
+// Tweens a number into an element's text over a short duration — used where
+// a freshly-computed value is worth letting the user watch settle in (a
+// session score, a stat that just became known) rather than appearing
+// instantly. Not for values that update repeatedly during normal use; call
+// sites are responsible for only invoking this on a real "this just
+// appeared" moment, not on every incidental re-render.
+const REDUCED_MOTION = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export function animateNumber(el, from, to, { duration = 400, format = (n) => String(Math.round(n)) } = {}) {
+  if (REDUCED_MOTION() || from === to) {
+    el.textContent = format(to);
+    return;
+  }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    const value = from + (to - from) * t;
+    el.textContent = format(value);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// A small looping dot-dash indicator — DitDash's one recurring "signal"
+// motif. Deliberately used sparingly (see receivePractice.js): it should
+// only ever be visible while something real is actively happening (audio is
+// playing), never as a decorative loop on static content.
+export function signalPulse() {
+  return el("span", { class: "signal-pulse", "aria-hidden": "true" }, [
+    el("span", { class: "signal-pulse-dot" }),
+    el("span", { class: "signal-pulse-dash" }),
+    el("span", { class: "signal-pulse-dot" }),
+  ]);
+}
+
 // Renders a dot/dash pattern (e.g. ".-") as a row of round/oblong glyphs
 // instead of punctuation, so it reads as Morse at a glance. Pass kind "good"
 // to render it in the "this is the answer" color instead of the default.
@@ -91,6 +125,15 @@ export function morseGlyphs(pattern, kind = "") {
     wrap.appendChild(el("span", { class: kind ? `${base} ${kind}` : base }));
   }
   return wrap;
+}
+
+// Pairs an already-written empty-state message with a small, muted Morse
+// glyph instead of leaving a blank area above it — visual, not new copy.
+export function emptyState(text) {
+  return el("div", { class: "empty-state" }, [
+    morseGlyphs("..--"),
+    el("p", { class: "small muted", text }),
+  ]);
 }
 
 // A segmented tab bar — builds on the .tabs/.tab-btn CSS already used by

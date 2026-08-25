@@ -1,8 +1,8 @@
 """Standalone launcher for the DitDash web app.
 
-Serves web/ locally and opens it in the default browser, same as
-web/serve.py, but built into a single .exe via build_web_exe.bat so the
-target machine needs no Python install of its own.
+Serves web/ locally and opens it in the default browser, same as web/serve.py.
+It can be packaged as a Windows executable or a macOS application so the
+target machine needs no Python installation of its own.
 """
 import http.server
 import json
@@ -17,8 +17,8 @@ import urllib.request
 import webbrowser
 import zipfile
 
-PORT = 8000
 REPO = "Screen4639/DitDash"
+SHUTDOWN_GRACE_SECONDS = 1.5
 
 
 def _read_version(web_root):
@@ -37,13 +37,25 @@ def _web_dir():
         # relaunch. Keep a persistent copy next to the exe instead, seeded
         # from the bundled copy the first time the app runs.
         bundled = os.path.join(sys._MEIPASS, "web")
-        persistent = os.path.join(os.path.dirname(sys.executable), "DitDashWeb_app")
+        if sys.platform == "darwin":
+            # A macOS .app bundle is commonly installed in /Applications and
+            # must be treated as read-only. Keep the updateable web assets in
+            # the conventional per-user Application Support directory.
+            persistent = os.path.join(
+                os.path.expanduser("~/Library/Application Support"),
+                "DitDash",
+                "web",
+            )
+        else:
+            persistent = os.path.join(
+                os.path.dirname(sys.executable), "DitDashWeb_app"
+            )
         if not os.path.isdir(persistent):
             shutil.copytree(bundled, persistent)
         elif _read_version(bundled) > _read_version(persistent):
-            # This exe was swapped for a newer build since the persistent
+            # The packaged app was replaced with a newer build since the persistent
             # copy was seeded (e.g. a fresh release replacing an older
-            # DitDashWeb.exe left in place) — reseed so js modules can't end
+            # copy was created — reseed so js modules can't end
             # up mismatched. Only reseed forward: an in-app self-update can
             # leave the persistent copy newer than this exe's bundle, and
             # that must not be clobbered.
@@ -96,11 +108,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/__shutdown":
             self.send_response(204)
             self.end_headers()
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            self._schedule_shutdown()
         elif self.path == "/__update":
+            self._cancel_shutdown()
             self._handle_update()
         else:
             self.send_error(404)
+
+    def do_GET(self):
+        self._cancel_shutdown()
+        super().do_GET()
+
+    def do_HEAD(self):
+        self._cancel_shutdown()
+        super().do_HEAD()
+
+    def _schedule_shutdown(self):
+        self._cancel_shutdown()
+        timer = threading.Timer(
+            SHUTDOWN_GRACE_SECONDS,
+            lambda: threading.Thread(
+                target=self.server.shutdown, daemon=True
+            ).start(),
+        )
+        timer.daemon = True
+        self.server.shutdown_timer = timer
+        timer.start()
+
+    def _cancel_shutdown(self):
+        timer = getattr(self.server, "shutdown_timer", None)
+        if timer:
+            timer.cancel()
+            self.server.shutdown_timer = None
 
     def _handle_update(self):
         try:
@@ -131,11 +170,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    shutdown_timer = None
 
 
 def main():
-    with Server(("localhost", PORT), Handler) as httpd:
-        webbrowser.open(f"http://localhost:{PORT}")
+    # Port 0 asks the OS for a free port, avoiding a startup failure when
+    # another local program already owns the old fixed port 8000.
+    with Server(("localhost", 0), Handler) as httpd:
+        port = httpd.server_address[1]
+        webbrowser.open(f"http://localhost:{port}")
         httpd.serve_forever()
 
 

@@ -133,6 +133,7 @@ export class Settings {
       this._collapsible("wpm", "Character Speed", `${s.wpm} WPM`, (valueLbl) => this._wpmSlider(valueLbl))
     );
     wrap.appendChild(this._farnsworthCollapsible());
+    wrap.appendChild(this._sendWpmCollapsible());
     wrap.appendChild(this._sendKeysSection());
     wrap.appendChild(
       button("Keyboard Shortcuts", () => showShortcutsHelp(this.app), "btn-block btn-panel")
@@ -148,6 +149,34 @@ export class Settings {
       this._onWpmLive(Number(input.value));
     });
     return input;
+  }
+
+  // Send speed: how fast you have to key dots/dashes in Send/Key Practice —
+  // deliberately a separate setting from Character Speed above, which
+  // trains listening/recognition. Most beginners can recognize characters
+  // by ear well before they can physically key them that fast by hand, so
+  // this defaults much lower (see storage.js) and is adjusted independently.
+  _sendWpmCollapsible() {
+    const s = this.app.profile.settings;
+    return this._collapsible("sendWpm", "Send Speed", `${s.sendWpm} WPM`, (valueLbl) => {
+      const frame = el("div", {});
+      frame.appendChild(
+        el("p", {
+          class: "small muted",
+          text:
+            "How fast you need to key dots and dashes in Send/Key Practice. Independent of " +
+            "Character Speed above — most people can recognize Morse by ear well before they " +
+            "can send it that fast by hand, so it's fine to keep this much lower while it climbs.",
+        })
+      );
+      const input = el("input", { type: "range", min: "5", max: "35", value: String(s.sendWpm) });
+      input.addEventListener("input", () => {
+        valueLbl.textContent = `${input.value} WPM`;
+        this._onSendWpmLive(Number(input.value));
+      });
+      frame.appendChild(input);
+      return frame;
+    });
   }
 
   // Farnsworth spacing: slows the gaps between characters/words while
@@ -419,11 +448,11 @@ export class Settings {
     wrap.appendChild(
       button("Test Key Mode", () => import("./keyTestMode.js").then((m) => this.app.show(m.KeyTestMode)), "btn-block btn-panel")
     );
-    if (s.keyConnection === "audio" && s.wpm > AUDIO_RELIABLE_WPM_CEILING) {
+    if (s.keyConnection === "audio" && s.sendWpm > AUDIO_RELIABLE_WPM_CEILING) {
       wrap.appendChild(
         el("p", {
           class: "small muted",
-          text: `Heads up — at ${s.wpm} WPM, audio input's contact-bounce filtering is less reliable with this browser-based detector (it works best up to about ${AUDIO_RELIABLE_WPM_CEILING} WPM). A Keyboard/HID interface stays reliable at any speed.`,
+          text: `Heads up — at ${s.sendWpm} WPM Send Speed, audio input's contact-bounce filtering is less reliable with this browser-based detector (it works best up to about ${AUDIO_RELIABLE_WPM_CEILING} WPM). A Keyboard/HID interface stays reliable at any speed.`,
         })
       );
     }
@@ -1398,6 +1427,11 @@ export class Settings {
   // change, and _collapsible() already keeps the slider itself mounted.
   _onWpmLive(v) {
     this.app.profile.settings.wpm = v;
+    this.app.saveProfile();
+  }
+
+  _onSendWpmLive(v) {
+    this.app.profile.settings.sendWpm = v;
     this.app.saveProfile();
   }
 

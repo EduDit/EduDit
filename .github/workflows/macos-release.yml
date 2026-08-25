@@ -1,0 +1,39 @@
+name: Build macOS app
+
+on:
+  workflow_run:
+    workflows: ["Bump version and publish DitDashWeb.exe"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build app and disk image
+        run: sh build_macos.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DitDashWeb-macOS
+          path: dist/DitDashWeb.dmg
+
+      - name: Attach disk image to release
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release view --json tagName --jq .tagName)"
+          gh release upload "$tag" dist/DitDashWeb.dmg --clobber

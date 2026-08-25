@@ -1,7 +1,7 @@
 # DitDash
 
-A Windows desktop Morse code trainer. Python 3 + tkinter for the UI and the
-built-in `winsound` module for tones — **Windows only**.
+A Morse code trainer with a Windows tkinter edition and a browser-based edition
+that can also be packaged as a Windows or macOS app.
 
 ## Features
 
@@ -54,6 +54,11 @@ See [`web/README.md`](web/README.md) for more (deploying, tests, etc.).
 **Either app, as a standalone .exe** (no Python needed on the target
 machine) — see [Build an executable](#build-an-executable) below.
 
+**macOS app** — download `DitDashWeb.dmg` from a GitHub Release, open it,
+and launch `DitDashWeb.app`. The app runs the full web edition locally and
+opens it in the default browser. macOS may require Control-click → Open for
+an unsigned build. See [Build for macOS](#build-for-macos) below.
+
 ## Build an executable
 
 ```bat
@@ -75,11 +80,28 @@ build_web_exe.bat
 This creates `dist\DitDashWeb.exe`, which bundles the web app and a Python
 runtime together — copy just that one file to another Windows PC and
 double-click it; no Python install needed there. It serves the app at
-`http://localhost:8000` and opens it in the default browser. The first run
+an available local-only address and opens it in the default browser. The first run
 also creates a `DitDashWeb_app` folder next to the `.exe` — a writable copy
 of the web app used so the in-app update button (see
 [Update checks](web/README.md#update-checks)) has somewhere persistent to
 write to; safe to delete to reset to the bundled version.
+
+## Build for macOS
+
+Run this on a Mac with Python 3 installed (PyInstaller cannot cross-compile a
+Mac app from Windows):
+
+```sh
+sh build_macos.sh
+```
+
+This creates `dist/DitDashWeb.app` and an installable
+`dist/DitDashWeb.dmg`. Updated web assets are stored in
+`~/Library/Application Support/DitDash/web`, where a normal Mac app has write
+permission. Publishing a GitHub Release automatically runs
+`.github/workflows/macos-release.yml` and attaches the DMG to that release.
+The generated app is not code-signed or notarized unless Apple signing
+credentials are added to the workflow.
 
 ## Data & layout
 
@@ -98,9 +120,10 @@ the app and no profiles exist yet, it is imported as a profile named
 
 ```
 main.py                        desktop entry point (Profile Select -> Main Menu)
-web_launcher.py                standalone web launcher, packaged into DitDashWeb.exe
+web_launcher.py                standalone web launcher for Windows and macOS packages
 build_exe.bat                  build dist\DitDash.exe (desktop app)
 build_web_exe.bat              build dist\DitDashWeb.exe (web app, bundled Python)
+build_macos.sh                 build the web edition as a macOS .app and .dmg
 run_web.bat / run_web.vbs      run the web app locally (needs Python installed)
 assets/icon.ico                app icon used by both .exe builds
 
@@ -151,4 +174,5 @@ web/                           browser rebuild of the app (see web/README.md)
     *.test.js                  unit tests for the module of the same name
 
 .github/workflows/pages.yml    auto-deploys web/ to GitHub Pages on push to main
+.github/workflows/macos-release.yml  builds/attaches the macOS DMG on releases
 ```

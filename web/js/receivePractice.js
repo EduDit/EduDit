@@ -1,7 +1,7 @@
 // Receive Practice: hear a tone, tap the matching character.
 
 import * as codes from "./codes.js";
-import { el, button, morseGlyphs, showToast, QWERTY_ROWS, isDigit, attachArrowNav, pageHeader } from "./dom.js";
+import { el, button, morseGlyphs, showToast, signalPulse, QWERTY_ROWS, isDigit, attachArrowNav, pageHeader } from "./dom.js";
 import { shouldAutoHint, streakToClear, charWeight, pickWeighted } from "./learning.js";
 import { explainCharacter } from "./explainSelection.js";
 import { evaluateAchievements } from "./achievements.js";
@@ -249,8 +249,22 @@ export class ReceivePractice {
     } else {
       this.status.textContent = "Listen…";
       this.status.className = "heading status center";
+      this._setListening(true);
     }
     this._timers.push(setTimeout(() => this.play(), 350));
+  }
+
+  // Toggles the small ambient "signal" indicator (dom.js's signalPulse())
+  // for exactly the window audio is actually playing — per the redesign
+  // plan's restraint guardrail, it must never linger past that into the
+  // answering phase.
+  _setListening(on) {
+    if (on) {
+      this.hintViz.innerHTML = "";
+      this.hintViz.appendChild(signalPulse());
+    } else if (this.hintViz.querySelector(".signal-pulse")) {
+      this.hintViz.innerHTML = "";
+    }
   }
 
   _practiceThisChar(ch) {
@@ -288,6 +302,7 @@ export class ReceivePractice {
   _dontKnow() {
     if (this.answered) return;
     this.answered = true;
+    this._setListening(false);
     const p = this.app.profile;
     p.receive_dont_know = p.receive_dont_know || {};
     p.receive_dont_know[this.target] = (p.receive_dont_know[this.target] || 0) + 1;
@@ -307,6 +322,7 @@ export class ReceivePractice {
     // an auto-hint round — whatever the learner answers next isn't blind
     // recognition anymore, so this round is no longer scoreable.
     this._roundScoreable = false;
+    this._setListening(false);
     this.status.textContent = `Hint: it's ${this.target}`;
     this.status.className = "heading status center good";
     this.keyButtons[this.target].classList.add("key-hint");
@@ -341,15 +357,29 @@ export class ReceivePractice {
       return;
     }
     const token = this._roundToken;
+    this._setListening(true);
     this.app.audio.playPatternAsync(codes.MORSE[this.target], s.wpm, s.freq, s.volume).then(() => {
+      this._setListening(false);
       if (token !== this._roundToken || this.answered || this._timingInterrupted) return;
       this._recognitionStartMs = performance.now();
+      // Hand off from "the app is speaking" to "you're up" — reuses the
+      // existing pop-in keyframe rather than adding a new one. Skipped if a
+      // hint was requested while playback was still in flight (roundScoreable
+      // already flipped false in that case) — don't clobber the hint text.
+      if (this._roundScoreable) {
+        this.status.textContent = "Your turn";
+        this.status.className = "heading status center";
+        this.status.classList.remove("pop-in");
+        void this.status.offsetWidth;
+        this.status.classList.add("pop-in");
+      }
     });
   }
 
   answer(ch) {
     if (this.answered) return;
     this.answered = true;
+    this._setListening(false);
     const p = this.app.profile;
     const s = p.settings;
     this.sessionTotal += 1;

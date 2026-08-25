@@ -9,11 +9,17 @@
 // then hands off to exactly one obvious primary action.
 
 import * as codes from "./codes.js";
-import { el, button } from "./dom.js";
+import { el, button, animateNumber } from "./dom.js";
 import { tierLetters } from "./weakLetters.js";
 import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { newCharacterCard } from "./teachingCard.js";
 import { sessionScore, scoreLabel } from "./scoring.js";
+
+// Session Summary can be shown after very few rounds when a level-up
+// triggered it early (see the matching SUMMARY_MIN_ROUNDS in
+// receivePractice.js/sendPractice.js) — "no misses" only reads as a real
+// accomplishment once a handful of rounds actually happened.
+const CLEAN_ROUND_MIN_TOTAL = 3;
 
 export class SessionSummary {
   static navId = "practice";
@@ -112,7 +118,9 @@ export class SessionSummary {
 
     const wrap = el("div", { class: "center" });
     wrap.appendChild(el("p", { class: "small muted", text: "Session Score" }));
-    wrap.appendChild(el("div", { class: "hero-number", text: String(score) }));
+    const scoreEl = el("div", { class: "hero-number" });
+    wrap.appendChild(scoreEl);
+    animateNumber(scoreEl, 0, score, { duration: 500 });
     wrap.appendChild(
       el("p", { class: "small muted", text: `Response speed: ${scoreLabel(score)}` })
     );
@@ -126,11 +134,25 @@ export class SessionSummary {
     const { correct, total } = this.stats;
     const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
 
-    const grid = el("div", { class: "stat-grid" });
+    // One group fade for the whole grid (not a per-tile staggered pop —
+    // several competing entrance animations reads as busy, not polished),
+    // plus a count-up on each individual clean number. Score stays a plain
+    // "x/y" fraction, not tweened — there's no single number to animate.
+    const grid = el("div", { class: "stat-grid fade-in" });
     grid.appendChild(this._statTile("Score", `${correct}/${total}`));
-    grid.appendChild(this._statTile("Accuracy", total > 0 ? `${pct}%` : "—"));
-    grid.appendChild(this._statTile("Level", String(level)));
-    grid.appendChild(this._statTile("Streak", String(streak)));
+
+    const accTile = this._statTile("Accuracy", total > 0 ? "0%" : "—");
+    grid.appendChild(accTile);
+    if (total > 0) animateNumber(accTile.querySelector(".stat-value"), 0, pct, { format: (n) => `${Math.round(n)}%` });
+
+    const levelTile = this._statTile("Level", "0");
+    grid.appendChild(levelTile);
+    animateNumber(levelTile.querySelector(".stat-value"), 0, level);
+
+    const streakTile = this._statTile("Streak", "0");
+    grid.appendChild(streakTile);
+    animateNumber(streakTile.querySelector(".stat-value"), 0, streak);
+
     wrap.appendChild(grid);
 
     const chars = Array.from(this.stats.chars).sort();
@@ -160,6 +182,8 @@ export class SessionSummary {
   // (smaller, panel-styled) rather than competing with it for attention.
   _recommendationSection(p, rec) {
     const card = el("div", { class: "card hero-card" });
+    const encouragement = this._encouragementLine();
+    if (encouragement) card.appendChild(encouragement);
     card.appendChild(el("span", { class: "badge", text: "Up Next" }));
     card.appendChild(el("p", { class: "heading", text: rec.title, style: { margin: "8px 0 2px" } }));
     if (rec.subtitle) card.appendChild(el("p", { class: "small muted", text: rec.subtitle }));
@@ -179,6 +203,18 @@ export class SessionSummary {
 
     card.appendChild(button("Return to Home", () => this._returnHome(), "btn-block btn-panel"));
     return card;
+  }
+
+  // A small, honest note — shown only when the session data itself supports
+  // it, never invented. The one case with zero ambiguity: no misses at all
+  // across a real number of rounds. Deliberately not trying to detect
+  // subtler things like "a character just became reliable," since Session
+  // Summary has no before/after snapshot to prove that actually just
+  // happened (see the redesign plan's discussion of this trade-off).
+  _encouragementLine() {
+    const { misses, total } = this.stats;
+    if (total < CLEAN_ROUND_MIN_TOTAL || Object.keys(misses).length > 0) return null;
+    return el("p", { class: "small muted", text: "Clean round — no misses this session.", style: { margin: "0 0 10px" } });
   }
 
   _practiceWeak(p) {

@@ -7,7 +7,7 @@
 // without going through the recommendation at all.
 
 import * as codes from "./codes.js";
-import { el, button } from "./dom.js";
+import { el, button, animateNumber } from "./dom.js";
 import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { combinedSeen } from "./weakLetters.js";
 import { todayMs, streakDays } from "./dailyPractice.js";
@@ -66,7 +66,7 @@ export class MainMenu {
   // explanation underneath, generated fresh from the profile's real state
   // every time this screen loads. Nothing else on the page competes with it.
   _heroCard(rec) {
-    const card = el("div", { class: "card hero-card" });
+    const card = el("div", { class: "card hero-card pop-in" });
     card.appendChild(el("span", { class: "badge", text: "Continue Your Journey" }));
     card.appendChild(el("p", { class: "heading", text: rec.title, style: { margin: "8px 0 2px" } }));
     card.appendChild(el("p", { class: "small muted", text: rec.subtitle }));
@@ -77,18 +77,34 @@ export class MainMenu {
   }
 
   // A single quiet line, not a stat grid — Home doesn't need to own this
-  // data, it just needs to point at where the full picture lives.
+  // data, it just needs to point at where the full picture lives. Each
+  // number counts up from zero on mount — MainMenu is only ever built via a
+  // fresh app.show(MainMenu) navigation (no in-place refresh path), so this
+  // plays once per real visit to Home, never on an incidental re-render.
   _quietStatLine(p, rec) {
     const level = rec.mode === "receive" ? p.receive_level : p.send_level;
     const { attempts, misses } = this._overallAccuracy(p);
+    const accuracyPct = attempts > 0 ? Math.round(((attempts - misses) / attempts) * 100) : null;
     const dayStreak = streakDays(p.daily_practice);
 
-    const parts = [`Level ${level}`];
-    if (attempts > 0) parts.push(`${Math.round(((attempts - misses) / attempts) * 100)}% accuracy`);
-    if (dayStreak > 0) parts.push(`${dayStreak}-day streak`);
+    const statsWrap = el("span", { class: "quiet-stat-line-stats" });
+    const levelSpan = el("span", { text: "Level" });
+    statsWrap.appendChild(levelSpan);
+    animateNumber(levelSpan, 0, level, { format: (n) => `Level ${Math.round(n)}` });
+
+    if (accuracyPct != null) {
+      const accSpan = el("span", { text: "" });
+      statsWrap.appendChild(accSpan);
+      animateNumber(accSpan, 0, accuracyPct, { format: (n) => `${Math.round(n)}% accuracy` });
+    }
+    if (dayStreak > 0) {
+      const streakSpan = el("span", { text: "" });
+      statsWrap.appendChild(streakSpan);
+      animateNumber(streakSpan, 0, dayStreak, { format: (n) => `${Math.round(n)}-day streak` });
+    }
 
     const line = el("div", { class: "quiet-stat-line" });
-    line.appendChild(el("span", { text: parts.join("   ·   ") }));
+    line.appendChild(statsWrap);
     line.appendChild(
       el("button", { class: "link-btn", text: "See full progress →", onclick: () => this._scoreboard() })
     );

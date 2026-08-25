@@ -5,7 +5,7 @@
 // another person using the same device.
 
 import * as storage from "./storage.js";
-import { el, button } from "./dom.js";
+import { el, button, emptyState } from "./dom.js";
 import { streakDays } from "./dailyPractice.js";
 
 export class ProfileSelect {
@@ -32,7 +32,7 @@ export class ProfileSelect {
         list.appendChild(this._profileRow(name));
       }
     } else {
-      list.appendChild(el("p", { class: "small muted", text: "No profiles yet — create one below." }));
+      list.appendChild(emptyState("No profiles yet — create one below."));
     }
     wrap.appendChild(list);
 

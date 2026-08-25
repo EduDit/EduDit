@@ -24,8 +24,11 @@ export class LiveKeyDecoder {
     this._timer = null;
   }
 
+  // Uses sendWpm — see the matching comment in sendPractice.js. Free
+  // Keying/Test Key Mode are a production (send) activity, not a
+  // receiving one.
   _wpm() {
-    return this.app.profile.settings.wpm;
+    return this.app.profile.settings.sendWpm;
   }
 
   // Straight-key/audio path: duration since press determines dot vs dash —
@@ -61,7 +64,7 @@ export class LiveKeyDecoder {
     this.onPatternChange(this.pattern);
 
     const s = this.app.profile.settings;
-    this.app.audio.playPattern(symbol, s.wpm, s.freq, s.volume);
+    this.app.audio.playPattern(symbol, s.sendWpm, s.freq, s.volume);
 
     if (this._timer) clearTimeout(this._timer);
     this._timer = setTimeout(() => this._decode(), decodeGapMs(this._wpm()));

@@ -6,7 +6,7 @@
 // is scored only for the current session — it never touches level/streak.
 
 import * as codes from "./codes.js";
-import { el, button, tabBar, pageHeader } from "./dom.js";
+import { el, button, tabBar, pageHeader, emptyState } from "./dom.js";
 import { tierLetters } from "./weakLetters.js";
 import { getRecommendation, startRecommendedTraining } from "./recommendation.js";
 import { confirmDialog } from "./dialog.js";
@@ -124,7 +124,7 @@ export class Lessons {
     );
     const customLessons = p.custom_lessons || [];
     if (customLessons.length === 0) {
-      wrap.appendChild(el("p", { class: "small muted", text: "No custom lessons yet." }));
+      wrap.appendChild(emptyState("No custom lessons yet."));
     } else {
       for (const lesson of customLessons) {
         wrap.appendChild(this._customLessonRow(lesson));
