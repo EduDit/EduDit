@@ -1,0 +1,62 @@
+name: Bump version and publish EduDitWeb.exe
+
+# Every push to main bumps the patch version and cuts a matching release —
+# except a push that touches *only* version.js, which would otherwise be
+# this workflow's own bump commit landing (though pushes authenticated with
+# the default GITHUB_TOKEN don't re-trigger workflows anyway; paths-ignore
+# is belt-and-suspenders, and also lets a manual version.js-only bump commit
+# through without a duplicate auto-bump on top of it).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "web/js/version.js"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump patch version
+        id: version
+        shell: pwsh
+        run: |
+          $path = "web/js/version.js"
+          $content = Get-Content $path -Raw
+          $m = [regex]::Match($content, 'APP_VERSION = "(\d+)\.(\d+)\.(\d+)"')
+          $next = "$($m.Groups[1].Value).$($m.Groups[2].Value).$([int]$m.Groups[3].Value + 1)"
+          $updated = $content -replace 'APP_VERSION = "[^"]+"', "APP_VERSION = `"$next`""
+          Set-Content -Path $path -Value $updated -NoNewline
+          "version=$next" >> $env:GITHUB_OUTPUT
+
+      - name: Commit and push bump
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/js/version.js
+          git commit -m "Bump version to ${{ steps.version.outputs.version }}"
+          git push
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyinstaller
+
+      - name: Build EduDitWeb.exe
+        run: pyinstaller --onefile --windowed --name EduDitWeb --icon assets\icon.ico --add-data "web;web" web_launcher.py
+
+      - uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: dist/EduDitWeb.exe
+          generate_release_notes: true

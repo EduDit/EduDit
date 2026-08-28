@@ -1,0 +1,18 @@
+# Runtime data (profiles are per-machine, not source)
+data/
+
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Editor
+.idea/
+*.swp
