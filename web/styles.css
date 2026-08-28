@@ -1065,6 +1065,15 @@ input[type="range"] {
 .dialog-message { white-space: pre-line; margin: 0 0 16px; }
 .dialog-box .button-row { margin: 0; }
 
+.profile-entry { display: flex; align-items: center; gap: 8px; }
+.profile-entry .profile-choice { flex: 1; min-width: 0; }
+.profile-actions { display: flex; gap: 6px; }
+.btn-small { min-height: 36px; padding: 7px 10px; font-size: 12px; }
+@media (max-width: 520px) {
+  .profile-entry { align-items: stretch; flex-direction: column; }
+  .profile-actions .btn { flex: 1; }
+}
+
 .shortcut-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 16px; }
 .shortcut-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .shortcut-key { flex: 0 0 auto; min-width: 100px; color: var(--accent); }

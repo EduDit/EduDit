@@ -15,7 +15,6 @@ import threading
 import urllib.request
 import zipfile
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 REPO = "EduDit/EduDit"
 
@@ -37,11 +36,18 @@ def apply_update(target_dir):
     with urllib.request.urlopen(release["zipball_url"], timeout=60) as resp:
         zip_bytes = resp.read()
 
-    with tempfile.TemporaryDirectory() as tmp:
+    target_dir = os.path.abspath(target_dir)
+    target_parent = os.path.dirname(target_dir)
+    with tempfile.TemporaryDirectory(dir=target_parent) as tmp:
         zip_path = os.path.join(tmp, "release.zip")
         with open(zip_path, "wb") as f:
             f.write(zip_bytes)
         with zipfile.ZipFile(zip_path) as zf:
+            safe_root = os.path.realpath(tmp) + os.sep
+            for member in zf.infolist():
+                destination = os.path.realpath(os.path.join(tmp, member.filename))
+                if not destination.startswith(safe_root):
+                    raise ValueError("Update archive contains an unsafe path")
             zf.extractall(tmp)
 
         # GitHub zipballs contain a single top-level "<owner>-<repo>-<sha>" folder.
@@ -50,14 +56,29 @@ def apply_update(target_dir):
             if os.path.isdir(os.path.join(tmp, name))
         )
         new_web_dir = os.path.join(extracted_root, "web")
-        for name in os.listdir(new_web_dir):
-            src = os.path.join(new_web_dir, name)
-            dst = os.path.join(target_dir, name)
-            if os.path.isdir(src):
-                shutil.rmtree(dst, ignore_errors=True)
-                shutil.copytree(src, dst)
-            else:
-                shutil.copy2(src, dst)
+        required = ("index.html", "styles.css", os.path.join("js", "app.js"))
+        if not os.path.isdir(new_web_dir) or any(not os.path.isfile(os.path.join(new_web_dir, path)) for path in required):
+            raise ValueError("Update archive does not contain a complete web app")
+
+        stage_dir = tempfile.mkdtemp(prefix="edudit-stage-", dir=target_parent)
+        backup_dir = tempfile.mkdtemp(prefix="edudit-backup-", dir=target_parent)
+        os.rmdir(stage_dir)
+        os.rmdir(backup_dir)
+        shutil.copytree(new_web_dir, stage_dir)
+        moved_current = False
+        try:
+            os.replace(target_dir, backup_dir)
+            moved_current = True
+            os.replace(stage_dir, target_dir)
+        except Exception:
+            if moved_current and not os.path.exists(target_dir):
+                os.replace(backup_dir, target_dir)
+            raise
+        finally:
+            if os.path.exists(stage_dir):
+                shutil.rmtree(stage_dir, ignore_errors=True)
+            if os.path.exists(backup_dir):
+                shutil.rmtree(backup_dir, ignore_errors=True)
 
     return release.get("tag_name", "")
 
@@ -136,6 +157,7 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == "__main__":
-    with Server(("localhost", PORT), Handler) as httpd:
-        print(f"Serving EduDit at http://localhost:{PORT}")
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    with Server(("localhost", port), Handler) as httpd:
+        print(f"Serving EduDit at http://localhost:{port}")
         httpd.serve_forever()

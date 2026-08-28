@@ -7,6 +7,7 @@
 import * as storage from "./storage.js";
 import { el, button, emptyState } from "./dom.js";
 import { streakDays } from "./dailyPractice.js";
+import { confirmDialog, promptDialog } from "./dialog.js";
 
 export class ProfileSelect {
   // Pre-profile state — renders its own centered layout, not the app shell.
@@ -86,17 +87,18 @@ export class ProfileSelect {
     const hasProgress = level > 1 || streak > 0;
     const desc = hasProgress ? `Level ${level}${streak > 0 ? `   ·   ${streak}-day streak` : ""}` : "New profile";
 
-    return el(
-      "button",
-      { class: "option-row", onclick: () => this._choose(name) },
-      [
+    const choose = el("button", { class: "option-row profile-choice", onclick: () => this._choose(name) }, [
         el("span", {}, [
           el("span", { class: "option-row-title", text: profile.pin ? `${name}  🔒` : name }),
           el("span", { class: "option-row-desc", text: desc }),
         ]),
         el("span", { class: "option-row-arrow", "aria-hidden": "true", text: "›" }),
-      ]
-    );
+      ]);
+    const actions = el("div", { class: "profile-actions" }, [
+      button("Rename", () => this._rename(name), "btn-panel btn-small"),
+      button("Delete", () => this._delete(name), "btn-danger btn-small"),
+    ]);
+    return el("div", { class: "profile-entry" }, [choose, actions]);
   }
 
   _choose(name) {
@@ -156,7 +158,7 @@ export class ProfileSelect {
       this.error.textContent = "Please enter a name.";
       return;
     }
-    if (storage.listProfiles().includes(name)) {
+    if (storage.listProfiles().some((existing) => existing.toLocaleLowerCase() === name.toLocaleLowerCase())) {
       this.error.textContent = "That profile already exists.";
       return;
     }
@@ -167,6 +169,32 @@ export class ProfileSelect {
     // have no `onboarded` field and would otherwise default to false.
     this.app.loadProfile(name);
     import("./onboarding.js").then((m) => this.app.show(m.Onboarding));
+  }
+
+  async _rename(oldName) {
+    const newName = await promptDialog("Rename profile", { defaultValue: oldName, placeholder: "Profile name" });
+    if (!newName || newName === oldName) return;
+    if (storage.listProfiles().some((name) => name.toLocaleLowerCase() === newName.toLocaleLowerCase())) {
+      this.error.textContent = "That profile already exists.";
+      return;
+    }
+    if (!storage.renameProfile(oldName, newName)) {
+      this.error.textContent = "The profile could not be renamed.";
+      return;
+    }
+    this.root.innerHTML = "";
+    this._build();
+  }
+
+  async _delete(name) {
+    const ok = await confirmDialog(`Delete profile "${name}" and all its progress?\nExport a backup first if you may need it later.`);
+    if (!ok) return;
+    if (!storage.deleteProfile(name)) {
+      this.error.textContent = "The profile could not be deleted.";
+      return;
+    }
+    this.root.innerHTML = "";
+    this._build();
   }
 
   destroy() {}

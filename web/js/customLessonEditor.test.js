@@ -46,14 +46,14 @@ test("saving a new lesson stores it in LEARNING_ORDER order, not click order", (
   const app = fakeApp();
   new CustomLessonEditor(root, app);
   root.querySelector(".text-input").value = "Confusables";
-  clickChar(root, "N"); // clicked before M, but M comes first in LEARNING_ORDER
-  clickChar(root, "M");
+  clickChar(root, "M"); // clicked before N, but N comes first in LEARNING_ORDER
+  clickChar(root, "N");
   root.querySelector(".btn-accent").click();
 
   assertEqual(app.profile.custom_lessons.length, 1);
   const lesson = app.profile.custom_lessons[0];
   assertEqual(lesson.name, "Confusables");
-  assertEqual(lesson.chars, ["M", "N"]);
+  assertEqual(lesson.chars, ["N", "M"]);
   assert(lesson.id, "expected a generated id");
 });
 

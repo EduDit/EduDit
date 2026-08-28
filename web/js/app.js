@@ -6,6 +6,7 @@ import * as storage from "./storage.js";
 import { ProfileSelect } from "./profileSelect.js";
 import { checkForUpdate, showUpdateBanner } from "./updateCheck.js";
 import { AppShell } from "./shell.js";
+import { showToast } from "./dom.js";
 
 class App {
   constructor(root) {
@@ -15,6 +16,16 @@ class App {
     this.profile = null;
     this._view = null;
     this.shell = null;
+
+    let storageWarningShown = false;
+    window.addEventListener("edudit-storage-error", () => {
+      if (storageWarningShown) return;
+      storageWarningShown = true;
+      showToast("Progress could not be saved. Check browser storage, then export a backup from Settings.", {
+        duration: 12000,
+      });
+      setTimeout(() => { storageWarningShown = false; }, 12000);
+    });
 
     // Prime the AudioContext on the first tap/click/keypress anywhere, so a
     // Bluetooth headset has already woken up by the time a real tone plays.

@@ -41,8 +41,20 @@ function _readAll() {
   }
 }
 
+function _storageFailed(action, error) {
+  window.dispatchEvent(new CustomEvent("edudit-storage-error", {
+    detail: { action, message: error && error.message ? error.message : String(error) },
+  }));
+}
+
 function _writeAll(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch (error) {
+    _storageFailed("save progress", error);
+    return false;
+  }
 }
 
 // Appearance is a device preference, not a per-profile one — stored outside
@@ -50,15 +62,23 @@ function _writeAll(state) {
 // chosen (Profile Select included), and stays consistent across profiles on
 // the same device.
 export function getTheme() {
-  const value = localStorage.getItem(THEME_KEY);
-  return value === "light" || value === "dark" ? value : "system";
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    return value === "light" || value === "dark" ? value : "system";
+  } catch (error) {
+    return "system";
+  }
 }
 
 export function setTheme(theme) {
-  if (theme === "light" || theme === "dark") {
-    localStorage.setItem(THEME_KEY, theme);
-  } else {
-    localStorage.removeItem(THEME_KEY);
+  try {
+    if (theme === "light" || theme === "dark") {
+      localStorage.setItem(THEME_KEY, theme);
+    } else {
+      localStorage.removeItem(THEME_KEY);
+    }
+  } catch (error) {
+    _storageFailed("save appearance settings", error);
   }
 }
 
@@ -218,4 +238,22 @@ export function createProfile(name, pin) {
   if (pin) profile.pin = _hashPin(pin);
   saveProfile(name, profile);
   return profile;
+}
+
+export function renameProfile(oldName, newName) {
+  const state = _readAll();
+  const index = state.profiles.indexOf(oldName);
+  if (index === -1 || Object.prototype.hasOwnProperty.call(state.data, newName)) return false;
+  state.data[newName] = state.data[oldName];
+  delete state.data[oldName];
+  state.profiles[index] = newName;
+  return _writeAll(state);
+}
+
+export function deleteProfile(name) {
+  const state = _readAll();
+  if (!state.profiles.includes(name)) return false;
+  state.profiles = state.profiles.filter((profileName) => profileName !== name);
+  delete state.data[name];
+  return _writeAll(state);
 }

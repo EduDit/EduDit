@@ -13,6 +13,11 @@ build/
 dist/
 *.spec
 
+# Browser test dependencies and output
+node_modules/
+test-results/
+playwright-report/
+
 # Editor
 .idea/
 *.swp
